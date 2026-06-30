@@ -40,7 +40,7 @@ function FloatingSidebar() {
         >
           <div className="flex items-center gap-2.5 px-5 pt-5 pb-[18px] border-b border-white/8">
             <Icon.HouseMark />
-            <Display size={20} color={C.cream} weight={500}>MyPropertyIQ</Display>
+            <Display size={20} color={C.cream} weight={500}>Mytanah</Display>
           </div>
 
           <div className="flex flex-col py-3 flex-1">
@@ -102,7 +102,7 @@ export default function AppShell() {
   const [searchParams] = useSearchParams()
   const { chromeShown, isMapPage } = useChrome()
   const [firstReveal, setFirstReveal] = useState(() => searchParams.get('from') === 'intro')
-  const title = PAGE_TITLES[pathname] ?? 'MyPropertyIQ'
+  const title = PAGE_TITLES[pathname] ?? 'Mytanah'
 
   return (
     <div className="relative w-screen h-screen overflow-hidden flex flex-col">

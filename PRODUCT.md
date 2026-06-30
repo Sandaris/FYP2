@@ -6,11 +6,11 @@ product
 
 ## Users
 
-FYP examiners and demo audiences — academic evaluators encountering MyPropertyIQ cold, typically for the first time. They need to immediately grasp both what the product does and that it was built with genuine care. First impression is decisive; polish and clarity matter far more than feature breadth. A secondary audience is Malaysian property buyers and investors who might use the tool to support an actual decision.
+FYP examiners and demo audiences — academic evaluators encountering Mytanah cold, typically for the first time. They need to immediately grasp both what the product does and that it was built with genuine care. First impression is decisive; polish and clarity matter far more than feature breadth. A secondary audience is Malaysian property buyers and investors who might use the tool to support an actual decision.
 
 ## Product Purpose
 
-MyPropertyIQ is a Malaysian property intelligence dashboard that unifies AI-powered valuation, market cycle analysis, ROI calculation, and a sentiment index into one coherent tool. It exists to demonstrate that complex property data science can be made legible and actionable — and to show the FYP panel that the underlying models have been wrapped in a production-quality interface, not just a notebook. Success means an examiner leaves understanding both what the tool does and why the design choices support it.
+Mytanah is a Malaysian property intelligence dashboard that unifies AI-powered valuation, market cycle analysis, ROI calculation, and a sentiment index into one coherent tool. It exists to demonstrate that complex property data science can be made legible and actionable — and to show the FYP panel that the underlying models have been wrapped in a production-quality interface, not just a notebook. Success means an examiner leaves understanding both what the tool does and why the design choices support it.
 
 ## Brand Personality
 

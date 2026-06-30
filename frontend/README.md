@@ -1,9 +1,9 @@
-# MyPropertyIQ — Design System
+# Mytanah — Design System
 
 > Malaysian Residential Property Intelligence. An editorial, light, warm
 > data product — Bloomberg numbers with luxury-magazine typography.
 
-This folder is the source of truth for **MyPropertyIQ**'s visual language:
+This folder is the source of truth for **Mytanah**'s visual language:
 colour tokens, type, spacing, motion, iconography, and a working UI kit
 that recreates the dashboard. Use it any time you design a screen, slide,
 prototype, or marketing surface for the brand.
@@ -23,7 +23,7 @@ when this system was authored — every rule below is faithful to that spec.
 
 ---
 
-## What MyPropertyIQ is
+## What Mytanah is
 
 A Malaysian residential property intelligence app. Three core surfaces:
 
@@ -60,7 +60,7 @@ No neon. Confidence comes from restraint.
 | `fonts/` | Notes on fonts (we load from Google Fonts via CSS `@import`) |
 | `assets/` | Logos, brand marks, key imagery |
 | `preview/` | Cards that populate the Design System tab (Colors, Type, Spacing, Components, Brand) |
-| `ui_kits/dashboard/` | High-fidelity React/JSX recreation of the MyPropertyIQ dashboard with Valuation, Sentiment, and Risk pages |
+| `ui_kits/dashboard/` | High-fidelity React/JSX recreation of the Mytanah dashboard with Valuation, Sentiment, and Risk pages |
 | `SKILL.md` | Skill entrypoint for Claude Code / agent invocations |
 
 ---
@@ -139,7 +139,7 @@ come from Lucide (see ICONOGRAPHY).
 ### Type
 - **Display: Cormorant Garamond** (300/400/500/600). Editorial,
   high-contrast serif. Page titles, hero labels, italic commentary, the
-  "MyPropertyIQ" wordmark.
+  "Mytanah" wordmark.
 - **UI: DM Sans** (300/400/500). Clean and humanist. Body, buttons,
   labels, nav, form fields.
 - **Data: JetBrains Mono** (400/500/600). Every number — prices, scores,
@@ -265,7 +265,7 @@ rounded caps, 24×24 grid) matches the editorial restraint of the brand.
   active markers.
 
 **Logo mark.** A small house glyph in `--earth` next to the
-"MyPropertyIQ" wordmark in Cormorant Garamond cream. See
+"Mytanah" wordmark in Cormorant Garamond cream. See
 `assets/logo.svg` and `assets/logo-mark.svg`. The wordmark works at any
 size; the mark stands alone at 24px+.
 

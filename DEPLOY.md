@@ -1,4 +1,4 @@
-# Deploy runbook — MyPropertyIQ (FYP2)
+# Deploy runbook — Mytanah (FYP2)
 
 This repo is deployed to a single GCP VM. The VM is **not** a git clone — files
 are pushed up over `gcloud compute scp`. When the user says "deploy", do the
@@ -11,17 +11,18 @@ steps below without asking for confirmation.
 | GCP instance    | `kw-property-valuation`                                          |
 | Zone            | `asia-southeast1-a`                                              |
 | External IP     | `34.87.4.244`                                                    |
-| Public URL      | `http://34.87.4.244/`                                            |
+| Public URL      | `https://explore-mytanah.com/`                                   |
 | VM user         | `kaiwen_pixalink_io`                                             |
 | App dir on VM   | `/home/kaiwen_pixalink_io/fyp2/`                                 |
-| systemd service | `fyp2.service` (runs uvicorn on **port 80**)                     |
-| Health endpoint | `GET http://34.87.4.244/` → 307 redirect when up                 |
+| systemd service | `fyp2.service` (runs uvicorn on `127.0.0.1:8000`)                |
+| Public proxy    | `nginx` on ports 80/443 with Let's Encrypt TLS                   |
+| Health endpoint | `GET https://explore-mytanah.com/health` -> 200 when up          |
 
-The service binds privileged port 80 thanks to
-`AmbientCapabilities=CAP_NET_BIND_SERVICE` in the unit file — do not change
-that or you will need to run as root. Port 80 is reachable because the VM has
-the `http-server` network tag and the project has the default
-`default-allow-http` firewall rule.
+Nginx owns public ports 80 and 443, terminates HTTPS for
+`explore-mytanah.com` and `www.explore-mytanah.com`, and proxies to uvicorn on
+`127.0.0.1:8000`. The VM has both `http-server` and `https-server` network tags
+and the project has the default `default-allow-http` and `default-allow-https`
+firewall rules.
 
 ## SSH — important quirk
 
@@ -113,10 +114,17 @@ gcloud compute scp \
 5. **Smoke-test the live URL:**
 
    ```bash
-   curl -sS -o /dev/null -w "%{http_code}\n" --max-time 10 http://34.87.4.244/
-   # expect: 307 (root redirects to the dashboard)
+   curl -sS -o /dev/null -w "%{http_code}\n" --max-time 10 http://explore-mytanah.com/
+   # expect: 301 (Nginx redirects HTTP to HTTPS)
+   curl -sS -o /dev/null -w "%{http_code}\n" --max-time 10 https://explore-mytanah.com/health
+   # expect: 200
+   curl -sS -o /dev/null -w "%{http_code}\n" --max-time 10 https://explore-mytanah.com/
+   # expect: 200
    curl -sS -o /dev/null -w "%{http_code}\n" --max-time 10 \
-     http://34.87.4.244/app/ui_kits/dashboard/index.html
+     https://explore-mytanah.com/dashboard
+   # expect: 200
+   curl -sS -o /dev/null -w "%{http_code}\n" --max-time 10 \
+     https://explore-mytanah.com/dashboard/roi
    # expect: 200
    ```
 
@@ -134,7 +142,8 @@ gcloud compute scp \
 │   ├── artifacts/                # trained model bundle (XGBoost-CUDA, R²≈0.881)
 │   └── .venv/                    # Python venv — do NOT scp this
 ├── frontend/
-│   └── ui_kits/dashboard/        # the live UI
+│   ├── dist/                     # built dashboard SPA served at /dashboard/*
+│   └── ui_kits/dashboard/        # public landing page and legacy fallback
 └── processed data/
     ├── transactions.parquet      # cleaned dataset (~4.4 MB)
     └── scheme_mukim_index.csv    # Scheme/Area → Mukim index
@@ -154,9 +163,7 @@ Type=simple
 User=kaiwen_pixalink_io
 WorkingDirectory=/home/kaiwen_pixalink_io/fyp2/backend
 Environment=PYTHONUNBUFFERED=1
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-ExecStart=/home/kaiwen_pixalink_io/fyp2/backend/.venv/bin/uvicorn api:app --host 0.0.0.0 --port 80 --workers 1
+ExecStart=/home/kaiwen_pixalink_io/fyp2/backend/.venv/bin/uvicorn api:app --host 127.0.0.1 --port 8000 --workers 1
 Restart=on-failure
 RestartSec=3
 
@@ -176,5 +183,5 @@ before restarting the service.
 - **`scp` says "No such file or directory" with a mangled path** — you used
   Windows backslashes. Switch to forward slashes.
 - **CRLF warnings on `git add`** — harmless Windows line-ending noise; ignore.
-- **External port-8000 is firewall-blocked.** The service binds port 80 on
-  purpose. Don't move it back to 8000 unless you also add a firewall rule.
+- **External port-8000 is firewall-blocked.** This is intentional. Nginx serves
+  ports 80/443 and proxies to uvicorn on local-only `127.0.0.1:8000`.

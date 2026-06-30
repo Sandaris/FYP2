@@ -33,15 +33,15 @@ const rmCompact = (n) => {
 
 const ROI_DEFAULT_SEED = {
   propertyPrice: 500000,
-  locationLabel: 'Manual property estimate',
-  propertyType: '',
-  sourceModel: 'Manual input',
-  rangeLow: null,
-  rangeHigh: null,
-  mukim: null,
-  scheme: null,
-  district: null,
-  state: null,
+  locationLabel: 'Bandar Utama, Petaling, Selangor',
+  propertyType: 'Condominium/Apartment',
+  sourceModel: 'Demo property input',
+  rangeLow: 450000,
+  rangeHigh: 650000,
+  mukim: 'Damansara',
+  scheme: 'Bandar Utama',
+  district: 'Petaling',
+  state: 'Selangor',
 }
 
 let ROI_UID = 0
@@ -355,18 +355,19 @@ export default function RoiCalculator({ seed }) {
   const [rentLoading, setRentLoading] = useState(false)
   const [rentError, setRentError] = useState(null)
   const [rentMode, setRentMode] = useState(source.mukim ? 'live' : 'manual')
-  const fetchMarketRent = () => {
+  const fetchMarketRent = (forceRefresh = false) => {
     const { mukim, scheme, district, state, propertyType } = source
     if (!mukim || rentLoading) return
     setRentLoading(true)
     setRentError(null)
+    setRentEstimate(null)
     API.rentComps({
       mukim,
       scheme,
       district,
       state,
       property_type: propertyType,
-    })
+    }, { forceRefresh })
       .then(data => {
         setRentEstimate(data)
         const bestRent = data.median_rent_myr || data.avg_rent_myr
@@ -383,14 +384,15 @@ export default function RoiCalculator({ seed }) {
       setRentalPrice(Math.max(0, Math.round(seed.propertyPrice * 0.0035)))
       setRentEstimate(null)
       setRentError(null)
+      setRentMode(seed.mukim ? 'live' : 'manual')
     }
-  }, [seed && seed.propertyPrice]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [seed]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (rentMode === 'live' && source.mukim && !rentEstimate && !rentLoading) {
+    if (rentMode === 'live' && source.mukim && !rentEstimate && !rentLoading && !rentError) {
       fetchMarketRent()
     }
-  }, [rentMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rentMode, source.mukim, source.scheme, source.district, source.state, source.propertyType, rentEstimate, rentLoading, rentError]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const safe = useMemo(() => {
     const p = roiClamp(price, 1, 100000000)
@@ -625,7 +627,7 @@ export default function RoiCalculator({ seed }) {
                       {!rentLoading && rentError && (
                         <div className="animate-in fade-in duration-200 grid gap-2 p-[14px] rounded-[10px]" style={{ background: 'rgba(166,50,40,0.07)', border: '1px solid rgba(166,50,40,0.22)' }}>
                           <div className="text-[12.5px]" style={{ color: C.down }}>{rentError}</div>
-                          <Button type="button" variant="outline" size="sm" onClick={fetchMarketRent}
+                          <Button type="button" variant="outline" size="sm" onClick={() => fetchMarketRent(true)}
                             className="self-start border-[#A63228] text-[#A63228] bg-transparent hover:bg-[#A63228]/10">
                             Try again
                           </Button>
@@ -671,6 +673,10 @@ export default function RoiCalculator({ seed }) {
                               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#B0AA9E] pointer-events-none">RM / mo</span>
                             </div>
                           </div>
+                          <Button type="button" variant="outline" size="sm" onClick={fetchMarketRent}
+                            className="self-start border-[#A27B5C] text-[#A27B5C] bg-transparent hover:bg-[#A27B5C]/10">
+                            Refresh estimate
+                          </Button>
                         </div>
                       )}
                       {/* No listings */}
@@ -679,10 +685,16 @@ export default function RoiCalculator({ seed }) {
                           <div className="text-[12.5px]" style={{ color: C.mid }}>
                             No rental listings found for <b style={{ color: C.deep }}>{rentLabel}</b>. Switch to Manual to enter your own estimate.
                           </div>
-                          <Button type="button" variant="outline" size="sm" onClick={() => setRentMode('manual')}
-                            className="self-start border-[#A27B5C] text-[#A27B5C] bg-transparent hover:bg-[#A27B5C]/10">
-                            Switch to Manual
-                          </Button>
+                          <div className="flex gap-2 flex-wrap">
+                            <Button type="button" variant="outline" size="sm" onClick={() => fetchMarketRent(true)}
+                              className="border-[#A27B5C] text-[#A27B5C] bg-transparent hover:bg-[#A27B5C]/10">
+                              Try again
+                            </Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => setRentMode('manual')}
+                              className="border-[#A27B5C] text-[#A27B5C] bg-transparent hover:bg-[#A27B5C]/10">
+                              Switch to Manual
+                            </Button>
+                          </div>
                         </div>
                       )}
                       {/* Initial fallback */}

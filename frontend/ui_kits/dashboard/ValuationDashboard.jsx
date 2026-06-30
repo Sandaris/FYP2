@@ -573,8 +573,8 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
       sourceModel: m.label,
       rangeLow: low,
       rangeHigh: high,
-      mukim: sel.mukim || null,
-      scheme: sel.area || null,
+      mukim: sel.mukim || sel.district || null,
+      scheme: sel.area || sel.mukim || null,
       district: sel.district || null,
       state: sel.state || null,
     });

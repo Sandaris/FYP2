@@ -46,12 +46,13 @@ export const API = {
     return req('/data/query' + (q ? '?' + q : ''))
   },
 
-  rentComps: (params) => {
+  rentComps: (params, { forceRefresh = false } = {}) => {
     const clean = typeof params === 'string'
       ? { mukim: params }
       : Object.fromEntries(
           Object.entries(params).filter(([, v]) => v != null && v !== '')
         )
+    if (forceRefresh) clean.force_refresh = 'true'
     return req('/rent-comps?' + new URLSearchParams(clean))
   },
 }

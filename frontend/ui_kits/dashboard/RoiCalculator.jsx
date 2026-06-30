@@ -3,15 +3,15 @@ const { useState: roiUseState, useMemo: roiUseMemo, useEffect: roiUseEffect, use
 
 const ROI_DEFAULT_SEED = {
   propertyPrice: 500000,
-  locationLabel: 'Manual property estimate',
-  propertyType: '',
-  sourceModel: 'Manual input',
-  rangeLow: null,
-  rangeHigh: null,
-  mukim: null,
-  scheme: null,
-  district: null,
-  state: null,
+  locationLabel: 'Bandar Utama, Petaling, Selangor',
+  propertyType: 'Condominium/Apartment',
+  sourceModel: 'Demo property input',
+  rangeLow: 450000,
+  rangeHigh: 650000,
+  mukim: 'Damansara',
+  scheme: 'Bandar Utama',
+  district: 'Petaling',
+  state: 'Selangor',
 };
 
 let ROI_UID = 0;
@@ -396,15 +396,16 @@ const RoiCalculator = ({ seed }) => {
       setRentalPrice(Math.max(0, Math.round(seed.propertyPrice * 0.0035)));
       setRentEstimate(null);
       setRentError(null);
+      setRentMode(seed.mukim ? 'live' : 'manual');
     }
-  }, [seed && seed.propertyPrice]);
+  }, [seed]);
 
   // Auto-fetch when entering live mode (or on first mount when mukim is set)
   roiUseEffect(() => {
-    if (rentMode === 'live' && source.mukim && !rentEstimate && !rentLoading) {
+    if (rentMode === 'live' && source.mukim && !rentEstimate && !rentLoading && !rentError) {
       fetchMarketRent();
     }
-  }, [rentMode]);
+  }, [rentMode, source.mukim, source.scheme, source.district, source.state, source.propertyType, rentEstimate, rentLoading, rentError]);
 
   const safe = roiUseMemo(() => {
     const p = roiClamp(price, 1, 100000000);

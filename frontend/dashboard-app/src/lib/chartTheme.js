@@ -15,7 +15,7 @@ const FONTS = {
 let registered = false
 
 /** Register once at app boot — ReactECharts passes `theme: CHART_THEME` in opts */
-export const CHART_THEME = 'mypropertyiq'
+export const CHART_THEME = 'mytanah'
 
 export function registerChartTheme() {
   if (registered) return

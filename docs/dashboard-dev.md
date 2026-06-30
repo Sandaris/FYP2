@@ -9,7 +9,7 @@ The dashboard is a **React SPA** served by a **FastAPI** backend. There are two 
 | Backend | `backend/api.py` | FastAPI — ML inference, data endpoints, serves built frontend |
 | Frontend source | `frontend/dashboard-app/` | Vite + React + shadcn/ui project (new) |
 | Frontend output | `frontend/dist/` | Built assets — FastAPI serves this |
-| Legacy frontend | `frontend/ui_kits/dashboard/` | Old CDN-based JSX files (kept for reference, not served) |
+| Legacy frontend | `frontend/ui_kits/dashboard/` | CDN-based landing page plus old dashboard fallback |
 
 ---
 
@@ -49,6 +49,17 @@ npm run dev
 ```
 
 Visit `http://localhost:5173` in the browser. Vite proxies all API calls (`/valuation`, `/hcr`, `/data`, `/rent-comps`) to FastAPI on port 8000 automatically.
+
+For the Mytanah pitch landing page during local development, use the same Vite
+origin. The local root serves the legacy landing page without changing the URL:
+
+```text
+http://localhost:5173/
+```
+
+Do not use the VM IP for local development. API calls should stay same-origin
+through the Vite proxy, or go directly to `http://localhost:8000` when testing
+FastAPI endpoints.
 
 > Hot-reload is active — saving any `.jsx` file instantly updates the browser.
 
@@ -109,13 +120,15 @@ Shared wrapper components (stat cards, section headers, etc.) live in `src/compo
 
 | Route | Component | Description |
 |---|---|---|
-| `/` | `IntroPage` | D3 globe intro animation; Skip or Begin → `/dashboard?from=intro` |
+| `/` | Mytanah landing page | Legacy pitch landing page served at the clean root URL |
 | `/dashboard` | `TransactionMapPage` | Map + location search + transaction explorer (default) |
 | `/dashboard/market` | `MarketOverviewPage` | National market stats + ECharts chart suite |
 | `/dashboard/roi` | `RoiCalculator` | Loan simulator + earnings projection |
 | `/dashboard/sentiment` | `SentimentPage` | Housing Cycle Index + HCR charts |
 
-The intro handoff uses a cream curtain + map zoom reveal on first load when `?from=intro` is present (handled in `AppShell`).
+The Mytanah landing page's demo CTA opens the dashboard with `?from=intro`, so
+the dashboard can still use its first-load reveal without keeping the old Vite
+intro page.
 
 ---
 
@@ -130,7 +143,7 @@ All served by FastAPI at port 8000. Vite dev proxy forwards these automatically.
 | `/valuation/roads` | GET | Road list for a given scheme |
 | `/hcr/current` | GET | Housing cycle regime (probability, contributions) |
 | `/data/query` | GET | Transaction data (filterable) |
-| `/rent-comps` | GET | AI-powered rental comparables (Gemini) |
+| `/rent-comps` | GET | Exa-powered live rental comparable estimate for ROI |
 
 ---
 
@@ -138,7 +151,7 @@ All served by FastAPI at port 8000. Vite dev proxy forwards these automatically.
 
 ### ECharts theming
 
-All ECharts instances share a registered theme (`mypropertyiq`) and helpers in `src/lib/chartTheme.js`. Import `chartOpts` for ReactECharts and use `chartTooltip()`, `chartGrid()`, `chartSplitLine()`, etc. when building options. The theme is registered once in `main.jsx`.
+All ECharts instances share a registered theme (`mytanah`) and helpers in `src/lib/chartTheme.js`. Import `chartOpts` for ReactECharts and use `chartTooltip()`, `chartGrid()`, `chartSplitLine()`, etc. when building options. The theme is registered once in `main.jsx`.
 
 ### What uses ECharts
 - Quarterly transaction volume (bar)
@@ -153,7 +166,7 @@ All ECharts instances share a registered theme (`mypropertyiq`) and helpers in `
 
 ### What uses D3
 - Malaysia choropleth map with state/district selection (`MalaysiaMap.jsx`)
-- Intro globe animation (`IntroPage`)
+- Mytanah landing page scroll globe (`frontend/ui_kits/dashboard/ScrollGlobe.jsx`)
 
 ### What uses custom SVG
 - HP-filter cyclical decomposition chart (`CyclicalChart.jsx`)
@@ -182,7 +195,7 @@ frontend/
     vite.config.js
     tailwind.config.js
   dist/                   ← built output (auto-generated, served by FastAPI)
-  ui_kits/dashboard/      ← legacy files (reference only, not served)
+  ui_kits/dashboard/      ← landing page and legacy fallback
 
 backend/
   api.py                  ← FastAPI app (serves frontend/dist/ at /app)

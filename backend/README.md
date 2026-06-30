@@ -32,7 +32,7 @@ The valuation model trains directly off `processed data/Open Transaction Data Cl
 uvicorn api:app --reload
 ```
 
-- **App (dashboard UI)**: <http://127.0.0.1:8000/> — auto-redirects to the MyPropertyIQ prototype
+- **App (dashboard UI)**: <http://127.0.0.1:8000/> — auto-redirects to the Mytanah landing page
 - Interactive docs: <http://127.0.0.1:8000/docs>
 - Health: <http://127.0.0.1:8000/health>
 

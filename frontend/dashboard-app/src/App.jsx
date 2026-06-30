@@ -5,7 +5,10 @@ import TransactionMapPage from '@/pages/TransactionMapPage.jsx'
 import MarketOverviewPage from '@/pages/MarketOverviewPage.jsx'
 import RoiCalculator from '@/pages/RoiCalculator.jsx'
 import SentimentPage from '@/pages/SentimentPage.jsx'
-import IntroPage from '@/pages/IntroPage.jsx'
+
+function LandingRedirect() {
+  return <Navigate to="/dashboard" replace />
+}
 
 function RoiPage() {
   const { state } = useLocation()
@@ -30,7 +33,7 @@ function DashboardRoutes() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<IntroPage />} />
+      <Route path="/" element={<LandingRedirect />} />
       <Route path="/dashboard/*" element={<DashboardRoutes />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

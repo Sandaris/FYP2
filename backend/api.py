@@ -33,7 +33,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -870,6 +870,7 @@ def rent_comps_endpoint(
     district: str | None = Query(None),
     state: str | None = Query(None),
     property_type: str | None = Query(None, description="Property type label for comparable rentals"),
+    force_refresh: bool = Query(False, description="Bypass the empty-result cache and re-run the Exa search"),
 ) -> dict:
     from rent_comps import get_rent_estimate
     try:
@@ -879,6 +880,7 @@ def rent_comps_endpoint(
             district=district,
             state=state,
             property_type=property_type,
+            force_refresh=force_refresh,
         )
         return estimate.__dict__
     except Exception as exc:
@@ -886,11 +888,12 @@ def rent_comps_endpoint(
 
 
 # ---------------------------------------------------------------------------
-# Frontend static hosting — serves the MyPropertyIQ design-system prototype
+# Frontend static hosting — serves the Mytanah frontend
 # at /app, so the React UI shares the API's origin (no CORS in the browser).
 # ---------------------------------------------------------------------------
 
 FRONTEND_DIR = ROOT.parent / "frontend"
+DIST_DIR = FRONTEND_DIR / "dist"
 DASHBOARD_DIR = FRONTEND_DIR / "ui_kits" / "dashboard"
 
 
@@ -916,8 +919,17 @@ class RevalidateStaticFiles(StaticFiles):
 if FRONTEND_DIR.exists():
     app.mount("/app", RevalidateStaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
+if DIST_DIR.exists():
+    @app.get("/dashboard", include_in_schema=False)
+    @app.get("/dashboard/{path:path}", include_in_schema=False)
+    def dashboard_spa(path: str = "") -> FileResponse:
+        response = FileResponse(DIST_DIR / "index.html")
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
 if DASHBOARD_DIR.exists():
-    # Serve the dashboard at clean root URLs: /, /index.html, /dashboard.html, etc.
+    # Keep the Mytanah landing page at the public root. The production dashboard
+    # lives at /dashboard/* through the built Vite app above.
     app.mount("/", RevalidateStaticFiles(directory=str(DASHBOARD_DIR), html=True), name="root")
 else:
     @app.get("/")

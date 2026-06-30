@@ -1,6 +1,6 @@
-# MyPropertyIQ Dashboard — UI Kit
+# Mytanah Dashboard — UI Kit
 
-A high-fidelity recreation of the MyPropertyIQ dashboard. Built as a
+A high-fidelity recreation of the Mytanah dashboard. Built as a
 click-through prototype with React via inline JSX (no build step).
 
 ## Run

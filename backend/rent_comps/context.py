@@ -1,6 +1,32 @@
 from dataclasses import dataclass
 import re
 
+# Common NAPIC dataset abbreviations → full Malay/English words.
+# Applied only when building the Exa search query so the AI can recognise
+# the location; the stored scheme name is kept as-is.
+_NAPIC_ABBREVS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r'\bBDR\b', re.IGNORECASE), 'Bandar'),
+    (re.compile(r'\bTMN\b', re.IGNORECASE), 'Taman'),
+    (re.compile(r'\bKG\b', re.IGNORECASE), 'Kampung'),
+    (re.compile(r'\bSG\b', re.IGNORECASE), 'Sungai'),
+    (re.compile(r'\bBT\b', re.IGNORECASE), 'Bukit'),
+    (re.compile(r'\bJLN\b', re.IGNORECASE), 'Jalan'),
+    (re.compile(r'\bHTS\b', re.IGNORECASE), 'Heights'),
+    (re.compile(r'\bGDN\b', re.IGNORECASE), 'Garden'),
+    (re.compile(r'\bVLG\b', re.IGNORECASE), 'Village'),
+    (re.compile(r'\bPERMAI\b', re.IGNORECASE), 'Permai'),
+    (re.compile(r'\bPRM\b', re.IGNORECASE), 'Permai'),
+    (re.compile(r'\bSRI\b', re.IGNORECASE), 'Sri'),
+    (re.compile(r'\bRES\b', re.IGNORECASE), 'Residensi'),
+]
+
+
+def _expand_napic(text: str) -> str:
+    """Expand uppercase NAPIC abbreviations to readable words."""
+    for pattern, replacement in _NAPIC_ABBREVS:
+        text = pattern.sub(replacement, text)
+    return text
+
 
 @dataclass(frozen=True)
 class RentContext:
@@ -35,7 +61,10 @@ class RentContext:
         )
 
     def cache_slug(self) -> str:
-        parts = [self.mukim, self.scheme, self.district, self.state, self.property_type]
+        # Use the expanded location so a scheme like "BDR UTAMA" gets a
+        # separate cache slot from "Bandar Utama" (different Exa query).
+        expanded = _expand_napic(self.location_label())
+        parts = [expanded, self.property_type]
         raw = "|".join(p for p in parts if p)
         slug = raw.lower()
         slug = re.sub(r"[^a-z0-9]+", "_", slug)
@@ -46,7 +75,7 @@ class RentContext:
         return ", ".join(bits)
 
     def exa_query(self) -> str:
-        location = self.location_label()
+        location = _expand_napic(self.location_label())
         lines = [
             f"Find current residential rental market prices in Malaysia for: {location}.",
         ]

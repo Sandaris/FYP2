@@ -72,7 +72,7 @@ const Sidebar = ({ active, onNav }) => (
       borderBottom: '1px solid rgba(255,255,255,0.08)',
     }}>
       <Icon.HouseMark/>
-      <Display size={20} color={C.cream} weight={500}>MyPropertyIQ</Display>
+      <Display size={20} color={C.cream} weight={500}>Mytanah</Display>
     </div>
     <nav style={{ display: 'flex', flexDirection: 'column', padding: '12px 0', flex: 1 }}>
       {NAV.map(n => {

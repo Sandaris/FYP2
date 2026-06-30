@@ -2,12 +2,46 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>MyPropertyIQ</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mytanah — Know if a property price can be trusted</title>
+<meta name="description" content="Mytanah is an AI trust layer for property transactions across Malaysia. An LLM researches open transaction data and live listings to show the real price, flag bait-and-switch ads, and estimate rental yield and ROI.">
 <link rel="stylesheet" href="/app/colors_and_type.css">
 <style>
-  html, body { margin: 0; height: 100%; background: #0a0e0c; }
-  #root { height: 100%; }
+  html { scroll-behavior: smooth; }
+  html, body { margin: 0; background: #0a0e0c; }
+  #root { min-height: 100%; }
   * { box-sizing: border-box; }
+
+  /* hero starfield */
+  .tl-stars {
+    position: absolute; inset: 0; pointer-events: none; z-index: 1;
+    background-image:
+      radial-gradient(1.4px 1.4px at 12% 22%, rgba(237,233,225,.55), transparent),
+      radial-gradient(1.2px 1.2px at 28% 64%, rgba(237,233,225,.4), transparent),
+      radial-gradient(1.6px 1.6px at 47% 16%, rgba(196,154,122,.5), transparent),
+      radial-gradient(1.2px 1.2px at 63% 48%, rgba(237,233,225,.42), transparent),
+      radial-gradient(1.3px 1.3px at 82% 30%, rgba(237,233,225,.5), transparent),
+      radial-gradient(1.1px 1.1px at 90% 70%, rgba(237,233,225,.35), transparent),
+      radial-gradient(1.2px 1.2px at 73% 82%, rgba(196,154,122,.4), transparent);
+  }
+
+  @keyframes tlFloat { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+  @keyframes tlChev { 0%,100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
+  .tl-chev { display: inline-block; animation: tlChev 1.6s ease-in-out infinite; font-size: 15px; }
+
+  /* responsive */
+  @media (max-width: 920px) {
+    .tl-hero-grid { grid-template-columns: 1fr !important; }
+    .tl-hero-grid > div:last-child { order: -1; }
+    .tl-grid-3 { grid-template-columns: 1fr 1fr !important; }
+    .tl-grid-4 { grid-template-columns: 1fr 1fr !important; }
+    .tl-flow { grid-template-columns: 1fr 1fr !important; }
+    .tl-split { grid-template-columns: 1fr !important; }
+    .tl-navlinks a:not(:last-child) { display: none; }
+  }
+  @media (max-width: 560px) {
+    .tl-grid-3, .tl-grid-4, .tl-flow { grid-template-columns: 1fr !important; }
+  }
 </style>
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
@@ -18,54 +52,14 @@
 <body>
 <div id="root"></div>
 
-<!-- Dashboard loads silently in the background while the intro plays.
-     dashboard.html body background is cream (#DCD7C9) so even mid-load
-     the iframe shows cream, not a white flash. -->
-<iframe id="dash-frame" src="dashboard.html?from=intro"
-  style="position:fixed;inset:0;width:100%;height:100%;border:none;visibility:hidden;z-index:-1;"
-  title="Dashboard">
-</iframe>
-
-<script type="text/babel" src="MalaysiaGeo.jsx"></script>
-<script type="text/babel" src="Intro.jsx"></script>
+<script type="text/babel" src="Primitives.jsx"></script>
+<script type="text/babel" src="TrustLensUI.jsx"></script>
+<script type="text/babel" src="HeroGlobe.jsx"></script>
+<script type="text/babel" src="ScrollGlobe.jsx"></script>
+<script type="text/babel" src="TrustLensLanding.jsx"></script>
 
 <script type="text/babel">
-const { useEffect, useRef } = React;
-
-const App = () => {
-  const iframeReadyRef = useRef(false);
-  const doneRef = useRef(false);
-  const revealRef = useRef(null);
-
-  useEffect(() => {
-    const frame = document.getElementById('dash-frame');
-    revealRef.current = () => {
-      frame.style.transition = 'opacity 0.6s ease';
-      frame.style.opacity = '0';
-      frame.style.visibility = 'visible';
-      frame.style.zIndex = '200';
-      requestAnimationFrame(() => requestAnimationFrame(() => { frame.style.opacity = '1'; }));
-      history.replaceState(null, '', 'dashboard.html?from=intro');
-    };
-    frame.addEventListener('load', () => {
-      iframeReadyRef.current = true;
-      if (doneRef.current) revealRef.current();
-    });
-  }, []);
-
-  const handleDone = () => {
-    doneRef.current = true;
-    if (iframeReadyRef.current) {
-      revealRef.current();
-    } else {
-      window.location.href = 'dashboard.html?from=intro';
-    }
-  };
-
-  return <Intro onDone={handleDone}/>;
-};
-
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+ReactDOM.createRoot(document.getElementById('root')).render(<TrustLensLanding/>);
 </script>
 </body>
 </html>

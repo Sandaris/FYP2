@@ -23,18 +23,17 @@ Quick reference (full details in DEPLOY.md):
 
 The repo has **two** frontends. Only sync the one that changed.
 
-| | Legacy (live today) | New (Vite migration) |
+| | Landing page | Dashboard app |
 |---|---|---|
 | Source | `frontend/ui_kits/dashboard/` | `frontend/dashboard-app/` |
 | Build step | None — JSX transpiled in the browser via CDN + Babel | `cd frontend/dashboard-app && npm run build` → output in `frontend/dist/` |
-| Served at | `/` (root) | `/app/dist/` (via the `/app` static mount) |
-| Deploy | SCP changed `.jsx`, `.html`, `.css`, and static assets under `ui_kits/dashboard/` | **Build first**, then SCP the whole `frontend/dist/` tree (hashed `assets/`, `index.html`, GeoJSON, video, etc.) |
-| Smoke test | `curl -I http://34.87.4.244/` → 307; `curl -I http://34.87.4.244/app/ui_kits/dashboard/index.html` → 200 | `curl -I http://34.87.4.244/app/dist/index.html` → 200 |
+| Served at | `/` | `/dashboard`, `/dashboard/market`, `/dashboard/roi`, `/dashboard/sentiment` |
+| Deploy | SCP changed landing `.jsx`, `.html`, `.css`, and static assets under `ui_kits/dashboard/` | **Build first**, then SCP the whole `frontend/dist/` tree (hashed `assets/`, `index.html`, GeoJSON, video, etc.) |
+| Smoke test | `curl -I https://explore-mytanah.com/` → 200 | `curl -I https://explore-mytanah.com/dashboard` → 200 |
 
-The new Vite app is the active development target (`docs/dashboard-dev.md` has
-local-dev details). The legacy CDN dashboard is still what FastAPI serves at
-`/`. Switching root to the built app requires an `api.py` mount change — do not
-assume that has already happened.
+The new Vite app is the active dashboard target (`docs/dashboard-dev.md` has
+local-dev details). The legacy CDN files now act as the public landing page and
+legacy fallback under `/app/ui_kits/dashboard/`.
 
 Do **not** SCP `node_modules`, `frontend/dashboard-app/` source to the VM (only
 `frontend/dist/` after a build), or `backend/.venv/`.
@@ -56,15 +55,14 @@ gcloud compute ssh kw-property-valuation --zone=asia-southeast1-a \
 
 ## Project shape (1-liner each)
 
-- `backend/api.py` — FastAPI app served by uvicorn on port 80. Endpoints under
+- `backend/api.py` — FastAPI app served by uvicorn behind nginx. Endpoints under
   `/valuation/*`, `/hcr/*`, `/data/*`, `/rent-comps`. Static mounts: `/app` →
-  entire `frontend/` dir; `/` → legacy `frontend/ui_kits/dashboard/`.
+  entire `frontend/` dir; `/dashboard/*` → built Vite SPA; `/` → landing page.
 - `frontend/dashboard-app/` — **new** Vite + React + Tailwind + shadcn/ui SPA
   (proper npm install). Edit here; `npm run build` writes to `frontend/dist/`.
   Local dev: Vite on `:5173` proxies API calls to FastAPI on `:8000`.
-- `frontend/ui_kits/dashboard/` — **legacy** CDN React dashboard (no build step).
-  Still served at `/`. Kept in sync during migration; will be retired once the
-  Vite app replaces the root mount.
+- `frontend/ui_kits/dashboard/` — legacy CDN React files. The `index.html`
+  landing page is still served at `/`; old dashboard files are fallback only.
 - `frontend/dist/` — built output from `dashboard-app` (auto-generated; deploy
   this, don't hand-edit).
 - `processed data/transactions.parquet` — cleaned Open Transaction Data
