@@ -74,8 +74,14 @@ class RentContext:
         bits = [b for b in (self.scheme, self.mukim, self.district, self.state) if b]
         return ", ".join(bits)
 
+    def exa_location(self) -> str:
+        """Location string for web search — omits pure-numeric NAPIC mukim codes."""
+        mukim = self.mukim if (self.mukim and not self.mukim.strip().isdigit()) else None
+        bits = [b for b in (self.scheme, mukim, self.district, self.state) if b]
+        return _expand_napic(", ".join(bits))
+
     def exa_query(self) -> str:
-        location = _expand_napic(self.location_label())
+        location = self.exa_location()
         lines = [
             f"Find current residential rental market prices in Malaysia for: {location}.",
         ]
