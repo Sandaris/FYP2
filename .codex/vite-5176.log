@@ -1,0 +1,25 @@
+
+> dashboard-app@0.0.0 dev
+> vite --host localhost --port 5176 --strictPort
+
+
+  VITE v8.1.0  ready in 166 ms
+
+  ➜  Local:   http://localhost:5176/
+3:52:09 PM [vite] vite.config.js changed, restarting server...
+3:52:09 PM [vite] server restarted.
+3:56:44 PM [vite] vite.config.js changed, restarting server...
+3:56:44 PM [vite] server restarted.
+4:13:12 PM [vite] vite.config.js changed, restarting server...
+4:13:12 PM [vite] server restarted.
+
+  ➜  Local:   http://localhost:5176/app/dist/
+4:13:18 PM [vite] vite.config.js changed, restarting server...
+4:13:18 PM [vite] server restarted.
+4:15:33 PM [vite] vite.config.js changed, restarting server...
+4:15:33 PM [vite] server restarted.
+
+  ➜  Local:   http://localhost:5176/
+4:16:23 PM [vite] vite.config.js changed, restarting server...
+4:16:23 PM [vite] server restarted.
+5:10:15 PM [vite] (client) page reload index.html
