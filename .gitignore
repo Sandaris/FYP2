@@ -35,4 +35,4 @@ backend/.env
 backend/.cache/
 
 # Local context/reference docs — not part of the shipped project
-docs/FYP Documentation Helper/
+docs/
