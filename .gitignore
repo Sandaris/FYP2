@@ -33,3 +33,6 @@ processed data/location_hierarchy_edges.csv
 # Environment and cache files
 backend/.env
 backend/.cache/
+
+# Local context/reference docs — not part of the shipped project
+docs/FYP Documentation Helper/

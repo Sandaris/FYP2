@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
+import { Slider } from '@/components/ui/slider'
 import { C } from '@/lib/colors'
 import { ScrollReveal } from '@/components/shared'
 import { API } from '@/lib/api'
@@ -46,6 +48,9 @@ const ROI_DEFAULT_SEED = {
 
 let ROI_UID = 0
 const roiUid = () => (ROI_UID += 1)
+
+const ROI_STRATEGY_COLORS = [C.earth, C.up, C.down, C.stable]
+const ROI_MAX_STRATEGIES = ROI_STRATEGY_COLORS.length
 
 // ── Pure calculation functions ────────────────────────────────────────────────
 
@@ -144,7 +149,7 @@ const RoiInput = ({ label, value, onChange, suffix, min, max, step = 1, placehol
         className={`bg-[#DCD7C9] border-[#A27B5C]/25 text-[#2C3930] focus:border-[#A27B5C] focus:ring-[#A27B5C]/20 ${suffix ? 'pr-14' : ''}`}
       />
       {suffix && (
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#B0AA9E] pointer-events-none">
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#3F4F44] pointer-events-none">
           {suffix}
         </span>
       )}
@@ -173,7 +178,7 @@ const RoiItemRow = ({ name, amount, onName, onAmount, onRemove, accent, namePlac
           onChange={(e) => onAmount(e.target.value)}
           className={`${fieldCls} pr-10 text-right`}
         />
-        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-[#B0AA9E] pointer-events-none">RM</span>
+        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-[#3F4F44] pointer-events-none">RM</span>
       </div>
       <button
         type="button"
@@ -186,80 +191,185 @@ const RoiItemRow = ({ name, amount, onName, onAmount, onRemove, accent, namePlac
   )
 }
 
-const RoiMetric = ({ label, value, sub, accent }) => (
-  <Card className="p-4 min-h-[94px]">
-    <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[#A27B5C]">{label}</p>
-    <p className="font-mono text-xl font-medium mt-2" style={{ color: accent || C.deep }}>{value}</p>
-    {sub && <p className="text-xs text-[#5C7065] mt-1.5 leading-snug">{sub}</p>}
-  </Card>
-)
-
-const RoiTimelineChart = ({ base, extra, principal, hasExtra }) => {
-  const W = 920, H = 280, padL = 74, padR = 28, padTop = 24, padBot = 42
-  const maxMonth = Math.max(
-    1,
-    base.points[base.points.length - 1]?.month || 0,
-    extra.points[extra.points.length - 1]?.month || 0,
+const RoiExtraPaymentRow = ({ index, amount, color, max, onAmount, onRemove, canRemove }) => {
+  const sliderMax = Math.max(max, amount)
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="w-[9px] h-[9px] rounded-full flex-shrink-0" style={{ background: color }}/>
+          <span className="text-[11px] font-medium uppercase tracking-[0.14em]" style={{ color: C.earth }}>
+            Strategy {index + 1}
+          </span>
+        </div>
+        {canRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remove strategy"
+            className="w-[22px] h-[22px] rounded-md cursor-pointer bg-transparent flex items-center justify-center text-[13px] leading-none"
+            style={{ border: `1px solid ${C.border}`, color: C.mid }}
+          >×</button>
+        )}
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="relative w-[130px] flex-shrink-0">
+          <input
+            type="number"
+            value={roiInputValue(amount)}
+            min={0}
+            step={50}
+            placeholder="0"
+            onChange={(e) => onAmount(e.target.value)}
+            className="w-full bg-[#DCD7C9] border border-[#A27B5C]/25 text-[#2C3930] text-[13.5px] rounded-lg pl-3 pr-9 py-[9px] outline-none focus:border-[#A27B5C] focus:ring-2 focus:ring-[#A27B5C]/20"
+          />
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10.5px] text-[#3F4F44] pointer-events-none">RM</span>
+        </div>
+        <Slider
+          value={[Math.min(amount, sliderMax)]}
+          max={sliderMax}
+          step={50}
+          color={color}
+          onValueChange={([v]) => onAmount(v)}
+          className="flex-1"
+          aria-label={`Strategy ${index + 1} extra monthly payment`}
+        />
+      </div>
+    </div>
   )
-  const maxAmount = Math.max(1, principal)
-  const x = (month) => padL + (month / maxMonth) * (W - padL - padR)
-  const y = (amount) => padTop + (1 - amount / maxAmount) * (H - padTop - padBot)
-  const path = (points) => points
-    .map((p, i) => `${i ? 'L' : 'M'}${x(p.month).toFixed(1)} ${y(p.balance).toFixed(1)}`)
-    .join(' ')
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => Math.round(maxMonth * t))
-  const amountTicks = [1, 0.75, 0.5, 0.25, 0].map((t) => Math.round(maxAmount * t))
+}
+
+const RoiSavingsHighlight = ({ results }) => {
+  if (!results.length) return null
+  const cols = Math.min(results.length, 3)
+  return (
+    <div className="mt-[14px] grid gap-2.5" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+      {results.map((r) => (
+        <div key={r.id} className="rounded-[12px] px-[16px] py-[13px]" style={{ background: `${r.color}17`, border: `1px solid ${r.color}55` }}>
+          <div className="flex items-center gap-1.5">
+            <span className="w-[8px] h-[8px] rounded-full flex-shrink-0" style={{ background: r.color }}/>
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: r.color }}>
+              +{roiFmt(r.amount)} / mo
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-1.5">
+            <span className="font-mono text-[22px] font-semibold" style={{ color: C.deep }}>{roiFmt(r.interestSaved)}</span>
+            <span className="text-[11.5px]" style={{ color: C.mid }}>saved</span>
+          </div>
+          <div className="mt-0.5 text-[12px]" style={{ color: C.mid }}>
+            loan cleared <b style={{ color: C.deep }}>{roiMonthsLabel(r.monthsSaved)}</b> faster
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const RoiMetric = ({ label, value, sub, accent, tooltip }) => {
+  const body = (
+    <>
+      <p
+        className="text-[10px] font-medium uppercase tracking-[0.14em] text-[#A27B5C] w-fit"
+        style={tooltip ? { textDecoration: 'underline', textDecorationStyle: 'dotted', textDecorationColor: C.muted, textUnderlineOffset: 4 } : undefined}
+      >
+        {label}
+      </p>
+      <p className="font-mono text-xl font-medium mt-2" style={{ color: accent || C.deep }}>{value}</p>
+      {sub && <p className="text-xs text-[#3F4F44] mt-1.5 leading-snug">{sub}</p>}
+    </>
+  )
+
+  if (!tooltip) {
+    return <Card className="p-4 min-h-[94px]">{body}</Card>
+  }
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
-      <rect x={padL} y={padTop} width={W - padL - padR} height={H - padTop - padBot}
-        fill={C.cream} stroke={C.border} rx="8"/>
-      {amountTicks.map((a) => (
-        <g key={'a' + a}>
-          <line x1={padL} x2={W - padR} y1={y(a)} y2={y(a)} stroke={C.border} strokeDasharray="4 6"/>
-          <text x={padL - 10} y={y(a) + 4} textAnchor="end"
-            fontFamily="'JetBrains Mono',monospace" fontSize="10" fill={C.muted}>{rmCompact(a)}</text>
-        </g>
-      ))}
-      {ticks.map((m) => (
-        <g key={'m' + m}>
-          <line x1={x(m)} x2={x(m)} y1={padTop} y2={H - padBot} stroke={C.border} strokeOpacity="0.55"/>
-          <text x={x(m)} y={H - 14} textAnchor="middle"
-            fontFamily="'DM Sans',sans-serif" fontSize="11" fill={C.mid}>{Math.round(m / 12)} yr</text>
-        </g>
-      ))}
-      {hasExtra && (
-        <path d={path(extra.points)} fill="none" stroke={C.earth} strokeWidth="2.8"
-          strokeLinecap="round" strokeLinejoin="round"/>
-      )}
-      <path d={path(base.points)} fill="none" stroke={C.light} strokeWidth="2.4"
-        strokeLinecap="round" strokeLinejoin="round"/>
-      <circle cx={x(base.months)} cy={y(0)} r="4" fill={C.light}/>
-      {hasExtra && <circle cx={x(extra.months)} cy={y(0)} r="4" fill={C.earth}/>}
-      <text x={padL} y={14} fontFamily="'DM Sans',sans-serif" fontSize="11" fill={C.mid}>
-        Remaining principal over time
-      </text>
-      {!hasExtra && (
-        <text x={(padL + W - padR) / 2} y={padTop + 24} textAnchor="middle"
-          fontFamily="'DM Sans',sans-serif" fontSize="12" fill={C.muted}>
-          No extra monthly payment inserted — following the normal schedule.
-        </text>
-      )}
-      <g transform={`translate(${W - 248} 8)`}>
-        <rect width="220" height="34" rx="17" fill={C.raised} stroke={C.border}/>
-        <line x1="16" x2="40" y1="12" y2="12" stroke={C.light} strokeWidth="2.4"/>
-        <text x="48" y="16" fontFamily="'DM Sans',sans-serif" fontSize="11" fill={C.mid}>normal schedule</text>
-        {hasExtra ? (
-          <>
-            <line x1="16" x2="40" y1="25" y2="25" stroke={C.earth} strokeWidth="2.8"/>
-            <text x="48" y="29" fontFamily="'DM Sans',sans-serif" fontSize="11" fill={C.mid}>with extra payment</text>
-          </>
-        ) : (
-          <text x="16" y="29" fontFamily="'DM Sans',sans-serif" fontSize="11" fill={C.muted}>no extra payment added</text>
-        )}
-      </g>
-    </svg>
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Card className="p-4 min-h-[94px] cursor-help">{body}</Card>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[260px] text-[12.5px] leading-snug">
+          {tooltip}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
+}
+
+const RoiTimelineChart = ({ base, extras, principal }) => {
+  const active = useMemo(() => extras.filter((e) => e.amount > 0), [extras])
+
+  const option = useMemo(() => {
+    const maxMonth = Math.max(
+      1,
+      base.points[base.points.length - 1]?.month || 0,
+      ...active.map((e) => e.schedule.points[e.schedule.points.length - 1]?.month || 0),
+    )
+    const maxAmount = Math.max(1, principal) * 1.03
+
+    // Pad each series to a flat 0-balance tail so the line (and tooltip) reads
+    // cleanly past the month a loan is actually paid off.
+    const toSeriesData = (points) => {
+      const data = points.map((p) => [p.month, Math.round(p.balance)])
+      const last = points[points.length - 1]
+      if (last && last.month < maxMonth) data.push([maxMonth, 0])
+      return data
+    }
+
+    const baseSeries = {
+      name: 'Normal schedule',
+      type: 'line', smooth: false, showSymbol: false, data: toSeriesData(base.points),
+      lineStyle: { color: C.light, width: 2.4 }, itemStyle: { color: C.light }, z: 2,
+      emphasis: { focus: 'series' },
+      markPoint: {
+        symbol: 'circle', symbolSize: 9, itemStyle: { color: C.light, borderColor: C.cream, borderWidth: 1.5 },
+        label: { show: false }, data: [{ coord: [base.months, 0] }],
+      },
+    }
+    const extraSeries = active.map((e) => ({
+      name: `+${roiFmt(e.amount)} / mo`,
+      type: 'line', smooth: false, showSymbol: false, data: toSeriesData(e.schedule.points),
+      lineStyle: { color: e.color, width: 2.6 }, itemStyle: { color: e.color }, z: 3,
+      emphasis: { focus: 'series' },
+      markPoint: {
+        symbol: 'circle', symbolSize: 9, itemStyle: { color: e.color, borderColor: C.cream, borderWidth: 1.5 },
+        label: { show: false }, data: [{ coord: [e.schedule.months, 0] }],
+      },
+    }))
+
+    return withChartBase({
+      animationDuration: 900,
+      grid: { left: 8, right: 16, top: 40, bottom: 34, containLabel: true },
+      legend: chartLegend({ top: 0, left: 0 }),
+      tooltip: {
+        trigger: 'axis', ...chartTooltip({ padding: [8, 10] }),
+        axisPointer: chartAxisPointerLine,
+        formatter: (ps) => {
+          const month = ps[0]?.value?.[0] ?? 0
+          let s = `<div style="font-family:'JetBrains Mono',monospace;font-size:12px">${roiMonthsLabel(month)} into the loan</div>`
+          ps.forEach((p) => {
+            s += `<div style="margin-top:2px">${p.marker} ${p.seriesName}: <b>${roiFmt(p.value[1])}</b> still owed</div>`
+          })
+          return s
+        },
+      },
+      xAxis: {
+        type: 'value', min: 0, max: maxMonth, splitNumber: 5,
+        axisLine: chartAxisLine, axisTick: { show: false },
+        axisLabel: { ...chartValueAxisLabel(), formatter: (v) => `${Math.round(v / 12)}yr` },
+        splitLine: { show: false },
+      },
+      yAxis: {
+        type: 'value', min: 0, max: Math.round(maxAmount),
+        axisLabel: { ...chartValueAxisLabel(), formatter: (v) => rmCompact(v) },
+        splitLine: chartSplitLine,
+      },
+      series: [baseSeries, ...extraSeries],
+    })
+  }, [base, active, principal])
+
+  return <ReactECharts option={option} style={{ height: 300 }} opts={chartOpts} notMerge/>
 }
 
 const RoiEarningsChart = ({ pts, breakEven, breakEvenValue, loanYears }) => {
@@ -309,7 +419,7 @@ const RoiEarningsChart = ({ pts, breakEven, breakEvenValue, loanYears }) => {
           endLabel: { show: true, distance: 6, formatter: (p) => sign(p.value[1]), color: C.up, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, fontWeight: 700 },
           markLine: breakEven != null ? {
             silent: true, symbol: 'none', lineStyle: { color: C.deep, width: 1.2, type: [4, 4] },
-            label: { show: true, position: 'insideEndTop', color: C.deep, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, formatter: breakEven < 1 ? 'break-even <1y' : `break-even ${breakEven.toFixed(1)}y` },
+            label: { show: false },
             data: [{ xAxis: breakEven }],
           } : undefined,
           markPoint: breakEven != null ? {
@@ -346,7 +456,7 @@ export default function RoiCalculator({ seed }) {
   const [loanPct, setLoanPct] = useState(90)
   const [annualRate, setAnnualRate] = useState(4.2)
   const [years, setYears] = useState(30)
-  const [extraMonthly, setExtraMonthly] = useState(0)
+  const [extraPayments, setExtraPayments] = useState(() => [{ id: roiUid(), amount: 0 }])
   const [costItems, setCostItems] = useState(() => [{ id: roiUid(), name: 'Furnishing', amount: 50000 }])
   const [rentalPrice, setRentalPrice] = useState(Math.max(0, Math.round(source.propertyPrice * 0.0035)))
   const [carparkRent, setCarparkRent] = useState(0)
@@ -400,9 +510,8 @@ export default function RoiCalculator({ seed }) {
     const loan = roiClamp(loanPct, 0, 100)
     const rate = roiClamp(annualRate, 0, 30)
     const yrs = roiClamp(years, 1, 40)
-    const extra = Math.max(0, roiNum(extraMonthly, 0))
-    return { p, dep, loan, rate, yrs, extra }
-  }, [price, depositPct, loanPct, annualRate, years, extraMonthly])
+    return { p, dep, loan, rate, yrs }
+  }, [price, depositPct, loanPct, annualRate, years])
 
   const oneTimeCost = useMemo(
     () => costItems.reduce((s, it) => s + Math.max(0, roiNum(it.amount, 0)), 0),
@@ -419,9 +528,33 @@ export default function RoiCalculator({ seed }) {
   const baseSchedule = useMemo(() => (
     roiBuildSchedule({ principal, annualRate: safe.rate, years: safe.yrs, extraMonthly: 0 })
   ), [principal, safe.rate, safe.yrs])
-  const extraSchedule = useMemo(() => (
-    roiBuildSchedule({ principal, annualRate: safe.rate, years: safe.yrs, extraMonthly: safe.extra })
-  ), [principal, safe.rate, safe.yrs, safe.extra])
+
+  const extraSchedules = useMemo(() => (
+    extraPayments.map((p, i) => {
+      const amount = Math.max(0, roiNum(p.amount, 0))
+      return {
+        id: p.id,
+        amount,
+        color: ROI_STRATEGY_COLORS[i % ROI_STRATEGY_COLORS.length],
+        schedule: roiBuildSchedule({ principal, annualRate: safe.rate, years: safe.yrs, extraMonthly: amount }),
+      }
+    })
+  ), [extraPayments, principal, safe.rate, safe.yrs])
+
+  const extraResults = useMemo(() => (
+    extraSchedules.map((s) => ({
+      ...s,
+      interestSaved: Math.max(0, baseSchedule.totalInterest - s.schedule.totalInterest),
+      monthsSaved: Math.max(0, baseSchedule.months - s.schedule.months),
+    }))
+  ), [extraSchedules, baseSchedule])
+
+  const activeResults = useMemo(() => (
+    extraResults
+      .map((r, i) => ({ ...r, num: i + 1 }))
+      .filter((r) => r.amount > 0)
+  ), [extraResults])
+  const extraSliderMax = Math.max(1000, Math.round((baseSchedule.monthly * 2) / 50) * 50)
 
   const roi = useMemo(() => {
     const M = baseSchedule.monthly
@@ -461,12 +594,12 @@ export default function RoiCalculator({ seed }) {
     const finalProfit = inc * 12 * tenureYears - sunkTotal
     const investment = deposit + furnishing
     const roiOnInvestment = investment ? (finalProfit / investment) * 100 : 0
-    const upfrontRecoverYears = inc > 0 ? investment / (inc * 12) : null
-    return { pts, breakEven, breakEvenValue, netMonthly, grossYield, finalProfit, roiOnInvestment, installment: M, income: inc, coverage, totalInterest, furnishing, investment, upfrontRecoverYears, loanYears, tenureYears, horizon }
+    // Payback from monthly cash flow only counts if rent actually clears the installment —
+    // gross rental alone overstates payback when the owner is topping up the shortfall.
+    const netPaybackYears = netMonthly > 0 ? investment / (netMonthly * 12) : null
+    return { pts, breakEven, breakEvenValue, netMonthly, grossYield, finalProfit, roiOnInvestment, installment: M, income: inc, coverage, totalInterest, furnishing, investment, netPaybackYears, loanYears, tenureYears, horizon }
   }, [baseSchedule, deposit, monthlyIncome, oneTimeCost, safe.yrs, safe.p])
 
-  const interestSaved = Math.max(0, baseSchedule.totalInterest - extraSchedule.totalInterest)
-  const monthsSaved = Math.max(0, baseSchedule.months - extraSchedule.months)
   const location = source.locationLabel || ROI_DEFAULT_SEED.locationLabel
   const rangeText = source.rangeLow && source.rangeHigh
     ? `${rmCompact(source.rangeLow)} - ${rmCompact(source.rangeHigh)}`
@@ -489,6 +622,10 @@ export default function RoiCalculator({ seed }) {
   const patchIncome = (id, patch) => setIncomeItems((items) => items.map((it) => (it.id === id ? { ...it, ...patch } : it)))
   const addIncome = () => setIncomeItems((items) => [...items, { id: roiUid(), name: '', amount: 0 }])
   const removeIncome = (id) => setIncomeItems((items) => items.filter((it) => it.id !== id))
+
+  const patchExtra = (id, amount) => setExtraPayments((items) => items.map((it) => (it.id === id ? { ...it, amount: Math.max(0, roiNum(amount, 0)) } : it)))
+  const addExtra = () => setExtraPayments((items) => (items.length >= ROI_MAX_STRATEGIES ? items : [...items, { id: roiUid(), amount: 0 }]))
+  const removeExtra = (id) => setExtraPayments((items) => items.filter((it) => it.id !== id))
 
   const sectionLabel = (color, text) => (
     <div className="flex items-center gap-2">
@@ -577,10 +714,10 @@ export default function RoiCalculator({ seed }) {
                           aria-label="Monthly rental price in RM"
                           className="bg-[#DCD7C9] border-[#A27B5C]/25 text-[#2C3930] focus:border-[#A27B5C] focus:ring-[#A27B5C]/20 pr-16"
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#B0AA9E] pointer-events-none">RM / mo</span>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#3F4F44] pointer-events-none">RM / mo</span>
                       </div>
                       {source.mukim ? (
-                        <div className="text-[11.5px] leading-snug" style={{ color: C.light }}>
+                        <div className="text-[11.5px] leading-snug" style={{ color: C.mid }}>
                           Enter your estimate, or switch to{' '}
                           <b className="cursor-pointer" style={{ color: C.earth }} onClick={() => setRentMode('live')}>
                             Live estimate
@@ -588,7 +725,7 @@ export default function RoiCalculator({ seed }) {
                           to auto-fill from {rentLabel} listings.
                         </div>
                       ) : (
-                        <div className="text-[11.5px] leading-snug" style={{ color: C.muted }}>
+                        <div className="text-[11.5px] leading-snug" style={{ color: C.mid }}>
                           Enter your expected monthly rental. Import a valuation to unlock live market data.
                         </div>
                       )}
@@ -670,7 +807,7 @@ export default function RoiCalculator({ seed }) {
                                 aria-label="Monthly rental — override market estimate"
                                 className="bg-[#DCD7C9] border-[#A27B5C]/25 text-[#2C3930] focus:border-[#A27B5C] focus:ring-[#A27B5C]/20 pr-16"
                               />
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#B0AA9E] pointer-events-none">RM / mo</span>
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#3F4F44] pointer-events-none">RM / mo</span>
                             </div>
                           </div>
                           <Button type="button" variant="outline" size="sm" onClick={fetchMarketRent}
@@ -723,7 +860,7 @@ export default function RoiCalculator({ seed }) {
             <div className="grid gap-[9px] pt-1.5 border-t border-dashed" style={{ borderColor: C.border }}>
               <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#A27B5C] mb-0.5">Other monthly income (optional)</p>
               {incomeItems.length === 0 && (
-                <div className="text-[12px]" style={{ color: C.muted }}>e.g. storeroom, signage, co-living top-up.</div>
+                <div className="text-[12px]" style={{ color: C.mid }}>e.g. storeroom, signage, co-living top-up.</div>
               )}
               {incomeItems.map((it) => (
                 <RoiItemRow key={it.id} name={it.name} amount={it.amount} accent={C.up}
@@ -765,19 +902,11 @@ export default function RoiCalculator({ seed }) {
               <RoiInput label="Years" value={years} min={1} max={40} step={1}
                 onChange={(v) => setYears(roiClamp(v, 1, 40))}/>
             </div>
-            {/* Extra payment */}
-            <div className="grid gap-[7px] pt-3 mt-0.5 border-t border-dashed" style={{ borderColor: C.border }}>
-              <RoiInput label="Extra monthly payment (optional)" value={extraMonthly} min={0} step={100}
-                onChange={(v) => setExtraMonthly(Math.max(0, roiNum(v, 0)))} suffix="RM"/>
-              <div className="text-[11.5px] leading-snug" style={{ color: C.muted }}>
-                Paid <b style={{ color: C.mid }}>on top of</b> your monthly installment to clear the loan faster and cut total interest. Leave at <b style={{ color: C.mid }}>0</b> to keep the normal schedule.
-              </div>
-            </div>
             {/* One-time cost items */}
             <div className="grid gap-[9px] pt-1.5 border-t border-dashed" style={{ borderColor: C.border }}>
               <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#A27B5C] mb-0.5">One-time costs (furnishing, reno…)</p>
               {costItems.length === 0 && (
-                <div className="text-[12px]" style={{ color: C.muted }}>No one-time costs added.</div>
+                <div className="text-[12px]" style={{ color: C.mid }}>No one-time costs added.</div>
               )}
               {costItems.map((it) => (
                 <RoiItemRow key={it.id} name={it.name} amount={it.amount} accent={C.down}
@@ -826,18 +955,25 @@ export default function RoiCalculator({ seed }) {
 
       <ScrollReveal>
       <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-        <RoiMetric label="Gross yield" value={`${roi.grossYield.toFixed(1)}%`} sub="annual income ÷ price"/>
+        <RoiMetric
+          label="Gross yield"
+          value={`${roi.grossYield.toFixed(1)}%`}
+          sub="annual income ÷ price"
+          tooltip="Annual rental income (rent + carpark + other) divided by the property price. A top-line yield — before interest, installment, or one-time costs, and the same whether you finance with a loan or pay cash."
+        />
         <RoiMetric
           label="Break-even"
           value={roi.breakEven != null ? roiYearsLabel(roi.breakEven) : `> ${roi.horizon} yr`}
           sub={roi.breakEven != null ? 'rent out-earns interest + costs' : 'rent too low to recover'}
           accent={roi.breakEven != null ? C.deep : C.down}
+          tooltip="The year cumulative rent collected catches up to cumulative interest + one-time costs. Loan principal isn't counted as a cost here — it converts into home equity you keep — so this is a softer bar than covering the full monthly installment."
         />
         <RoiMetric
           label={`Net profit @ ${Math.round(safe.yrs)}yr`}
           value={`${roi.finalProfit < 0 ? '−' : ''}${roiFmt(Math.abs(roi.finalProfit))}`}
           sub={`ROI ${roi.roiOnInvestment >= 0 ? '+' : ''}${roi.roiOnInvestment.toFixed(0)}% on cash in`}
           accent={roi.finalProfit >= 0 ? C.up : C.down}
+          tooltip="Total rent collected over the full loan tenure, minus one-time costs and total interest paid (principal excluded, same as break-even). ROI% divides that profit by your actual cash in — deposit + one-time costs, not the property price — so it reflects the leverage from financing most of the purchase with a loan."
         />
       </div>
       </ScrollReveal>
@@ -845,17 +981,15 @@ export default function RoiCalculator({ seed }) {
       <ScrollReveal>
       <Card className="p-[18px]">
         <div className="flex justify-between items-baseline gap-3 flex-wrap">
-          <div>
-            <span className="font-display text-[18px] font-medium text-[#2C3930]">Income vs debt over time</span>
-            <div className="mt-1 text-[12px]" style={{ color: C.mid }}>
-              You repay the loan in full regardless, and the principal becomes equity you keep — so rent only has to out-earn the interest + one-time costs. Interest stops once the loan clears, so rent always catches up: that crossing is break-even.
-            </div>
-          </div>
-          <span className="font-mono font-medium text-[13px]" style={{ color: roi.breakEven != null ? C.up : C.down }}>
+          <span className="font-display text-[18px] font-medium text-[#2C3930]">Income vs debt over time</span>
+          <span className="font-mono font-medium text-[13px] flex-shrink-0" style={{ color: roi.breakEven != null ? C.up : C.down }}>
             {roi.breakEven != null
               ? (roi.breakEven < 1 ? 'recovers within the first year' : `~${roi.breakEven.toFixed(1)} yr to recover`)
               : 'rent too low to recover'}
           </span>
+        </div>
+        <div className="mt-1 text-[12px]" style={{ color: C.mid }}>
+          You repay the loan in full regardless, and the principal becomes equity you keep — so rent only has to out-earn the interest + one-time costs. Interest stops once the loan clears, so rent always catches up: that crossing is break-even.
         </div>
         <div className="mt-[14px]">
           <RoiEarningsChart pts={roi.pts} breakEven={roi.breakEven} breakEvenValue={roi.breakEvenValue} loanYears={roi.loanYears}/>
@@ -864,13 +998,33 @@ export default function RoiCalculator({ seed }) {
       </ScrollReveal>
 
       <ScrollReveal>
-      <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+      <Card className="p-[18px]">
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <span className="font-display text-[18px] font-medium text-[#2C3930]">Cash payback</span>
+          <span className="font-mono font-medium text-[13px]" style={{ color: roi.netMonthly >= 0 ? C.up : C.down }}>
+            {roi.netMonthly >= 0 ? `+${roiFmt(roi.netMonthly)} / mo` : `−${roiFmt(Math.abs(roi.netMonthly))} / mo`}
+          </span>
+        </div>
+        <div className="mt-2.5 text-[13px] leading-[2]" style={{ color: C.mid }}>
+          You pay <b className="font-mono text-[21px] font-semibold" style={{ color: C.deep }}>{roiFmt(roi.investment)}</b> upfront (deposit + one-time costs).{' '}
+          {roi.netMonthly >= 0 ? (
+            <>Rent covers the installment with <b className="font-mono text-[21px] font-semibold" style={{ color: C.up }}>{roiFmt(roi.netMonthly)}</b> left over each month — at that pace you take the upfront cash back in <b className="font-mono text-[21px] font-semibold" style={{ color: C.deep }}>~{roiYearsLabel(roi.netPaybackYears)}</b>.</>
+          ) : (
+            <>After the installment, you're topping up <b className="font-mono text-[21px] font-semibold" style={{ color: C.down }}>{roiFmt(Math.abs(roi.netMonthly))}</b> from your own pocket every month — so rent alone never pays that upfront cash back. You'd be funding the shortfall for the full <b className="font-mono text-[21px] font-semibold" style={{ color: C.deep }}>{roiYearsLabel(roi.loanYears)}</b>, until the loan is cleared.</>
+          )}
+        </div>
+        <div className="mt-2.5 pt-2.5 border-t border-dashed text-[11.5px] leading-snug" style={{ borderColor: C.border, color: C.mid }}>
+          <b style={{ color: C.mid }}>Assumption:</b> once the loan is fully paid off, the property is yours outright and can be liquidated (sold) — at that point your upfront cash{roi.netMonthly < 0 ? ' and every monthly top-up' : ''} is recovered through the underlying asset value, regardless of how monthly cash flow ran along the way.
+        </div>
+      </Card>
+      </ScrollReveal>
+
+      <ScrollReveal>
+      <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         <RoiMetric label="Deposit amount" value={roiFmt(deposit)} sub={`${safe.dep.toFixed(1)}% upfront`}/>
         <RoiMetric label="Loan principal" value={roiFmt(principal)} sub={`${safe.loan.toFixed(1)}% financed`}/>
         <RoiMetric label="One-time cost" value={roiFmt(oneTimeCost)} sub="furnishing, reno…" accent={oneTimeCost ? C.down : C.mid}/>
         <RoiMetric label="Monthly installment" value={roiFmt(baseSchedule.monthly)} sub="reducing balance"/>
-        <RoiMetric label="Interest without extra" value={roiFmt(baseSchedule.totalInterest)} sub={roiMonthsLabel(baseSchedule.months)}/>
-        <RoiMetric label="Interest with extra" value={roiFmt(extraSchedule.totalInterest)} sub={roiMonthsLabel(extraSchedule.months)} accent={safe.extra ? C.earth : C.deep}/>
       </div>
       </ScrollReveal>
 
@@ -878,37 +1032,95 @@ export default function RoiCalculator({ seed }) {
       <Card className="p-[18px]">
         <div className="flex justify-between items-baseline gap-3 flex-wrap">
           <div>
-            <span className="font-display text-[18px] font-medium text-[#2C3930]">Loan timeline</span>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className="font-display text-[18px] font-medium text-[#2C3930] cursor-help underline decoration-dotted decoration-1 underline-offset-4"
+                    style={{ textDecorationColor: C.muted }}
+                  >
+                    Loan timeline
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[260px] text-[12.5px] leading-snug">
+                  If a buyer can afford to pay more toward the installment, this section shows how much they save in total loan tenure.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <div className="mt-1 text-[12px]" style={{ color: C.mid }}>
-              {safe.extra > 0
-                ? 'Normal schedule compared with recurring extra monthly payment.'
-                : 'Remaining loan principal over the tenure.'}
+              See how much you could save — in interest and payoff time — if you can afford to pay more than the minimum installment each month.
             </div>
           </div>
-          {safe.extra > 0 && (
-            <span className="font-mono font-medium text-[13px]" style={{ color: interestSaved ? C.up : C.mid }}>
-              {roiFmt(interestSaved)} saved · {roiMonthsLabel(monthsSaved)} faster
-            </span>
-          )}
         </div>
-        {safe.extra <= 0 && (
+
+        {/* Extra payment strategies */}
+        <div className="mt-[16px] grid gap-[14px] pt-3 border-t border-dashed" style={{ borderColor: C.border }}>
+          <div className="flex items-baseline justify-between gap-2 flex-wrap">
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em]" style={{ color: C.earth }}>
+              Extra monthly payment (optional) · compare strategies
+            </p>
+            {extraPayments.length < ROI_MAX_STRATEGIES && (
+              <Button type="button" variant="outline" size="sm" onClick={addExtra}
+                className="self-start border-dashed border-[#A27B5C] text-[#A27B5C] bg-transparent hover:bg-[#A27B5C]/10">
+                + Add strategy
+              </Button>
+            )}
+          </div>
+          <div className="grid gap-[14px]" style={{ gridTemplateColumns: extraPayments.length > 1 ? '1fr 1fr' : '1fr' }}>
+            {extraPayments.map((p, i) => (
+              <RoiExtraPaymentRow
+                key={p.id}
+                index={i}
+                amount={Math.max(0, roiNum(p.amount, 0))}
+                color={ROI_STRATEGY_COLORS[i % ROI_STRATEGY_COLORS.length]}
+                max={extraSliderMax}
+                onAmount={(v) => patchExtra(p.id, v)}
+                onRemove={() => removeExtra(p.id)}
+                canRemove={extraPayments.length > 1}
+              />
+            ))}
+          </div>
+          <div className="text-[11.5px] leading-snug" style={{ color: C.mid }}>
+            Paid <b style={{ color: C.mid }}>on top of</b> the monthly installment to clear the loan faster and cut total interest. Add another strategy to compare amounts side by side. Leave at <b style={{ color: C.mid }}>0</b> to keep the normal schedule.
+          </div>
+        </div>
+
+        <RoiSavingsHighlight results={activeResults}/>
+
+        {activeResults.length === 0 && (
           <div className="mt-3 flex items-start gap-[11px] px-[15px] py-3 rounded-[10px]" style={{ background: `${C.earth}1F`, border: `1px solid ${C.earth}66` }}>
             <span className="flex-shrink-0 w-[21px] h-[21px] rounded-full flex items-center justify-center mt-0.5 text-[13px] font-bold italic"
               style={{ background: C.earth, color: C.cream }}>i</span>
             <span className="text-[13px] leading-relaxed" style={{ color: C.deep }}>
-              <b>No extra monthly payment added.</b> The chart below shows your <b>normal schedule only</b>. Type an amount into <b>Extra monthly payment</b> (in the Costs panel) to see how much faster you'd clear the loan and how much interest you'd save.
+              <b>No extra monthly payment added.</b> The chart below shows your <b>normal schedule only</b>. Drag a strategy's slider above to see how much faster you'd clear the loan and how much interest you'd save.
             </span>
           </div>
         )}
         <div className="mt-[18px]">
-          <RoiTimelineChart base={baseSchedule} extra={extraSchedule} principal={principal} hasExtra={safe.extra > 0}/>
+          <RoiTimelineChart base={baseSchedule} extras={extraSchedules} principal={principal}/>
         </div>
+
+        {activeResults.length > 0 && (
+          <div className="mt-[18px] grid gap-2.5" style={{ gridTemplateColumns: `repeat(${Math.min(1 + activeResults.length, 4)}, 1fr)` }}>
+            <RoiMetric label="Interest without extra" value={roiFmt(baseSchedule.totalInterest)} sub={roiMonthsLabel(baseSchedule.months)}/>
+            {activeResults.map((r) => (
+              <RoiMetric
+                key={r.id}
+                label={`Interest with extra · Strategy ${r.num}`}
+                value={roiFmt(r.schedule.totalInterest)}
+                sub={`${roiMonthsLabel(r.schedule.months)} · +${roiFmt(r.amount)}/mo`}
+                accent={r.color}
+              />
+            ))}
+          </div>
+        )}
+
         <div className="mt-[14px] pt-[14px] flex justify-between gap-2.5 flex-wrap text-[12.5px]" style={{ borderTop: `1px solid ${C.border}`, color: C.mid }}>
           <span>Upfront cash <b style={{ color: C.deep }}>{roiFmt(roi.investment)}</b> (deposit + one-time) — real money out of pocket</span>
-          <span className="font-semibold" style={{ color: roi.upfrontRecoverYears != null ? C.up : C.down }}>
-            {roi.upfrontRecoverYears != null
-              ? `Gross rental collects it back in ~${roi.upfrontRecoverYears.toFixed(1)} yr`
-              : 'Add rental income to recover it'}
+          <span className="font-semibold" style={{ color: roi.netPaybackYears != null ? C.up : C.down }}>
+            {roi.netPaybackYears != null
+              ? `Net rent collects it back in ~${roi.netPaybackYears.toFixed(1)} yr`
+              : 'Recovered at loan payoff via liquidation — see Cash payback above'}
           </span>
         </div>
       </Card>
