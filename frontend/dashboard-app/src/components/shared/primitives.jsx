@@ -2,10 +2,11 @@ import { C } from '@/lib/colors'
 
 export { C }
 
-export const Eyebrow = ({ children, style }) => (
+export const Eyebrow = ({ children, style, ...rest }) => (
   <div
-    className="font-sans text-[11px] font-medium uppercase tracking-[0.14em] text-earth"
+    className="font-sans text-[11px] font-medium uppercase tracking-[0.14em] text-[#694F3A]"
     style={style}
+    {...rest}
   >
     {children}
   </div>
@@ -50,7 +51,7 @@ export const Mono = ({ children, size = 18, color = C.deep, weight = 500, style 
 export const Button = ({ children, onClick, variant = 'primary', style }) => {
   const styles = {
     primary: { background: C.deep, color: C.cream },
-    cta: { background: C.earth, color: C.cream },
+    cta: { background: C.earthText, color: C.cream },
     ghost: { background: 'transparent', color: C.deep, border: `1px solid ${C.border}` },
   }[variant]
   return (
@@ -65,11 +66,11 @@ export const Button = ({ children, onClick, variant = 'primary', style }) => {
   )
 }
 
-export const Display = ({ children, size = 28, weight = 500, color = C.deep, style }) => (
-  <span
+export const Display = ({ children, size = 28, weight = 500, color = C.deep, style, as: Tag = 'span' }) => (
+  <Tag
     className="font-display leading-tight tracking-tight"
-    style={{ fontSize: size, fontWeight: weight, color, ...style }}
+    style={{ fontSize: size, fontWeight: weight, color, margin: 0, ...style }}
   >
     {children}
-  </span>
+  </Tag>
 )

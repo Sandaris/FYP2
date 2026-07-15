@@ -3,7 +3,7 @@
    type-to-filters the options. The dropdown is rendered position:fixed
    (anchored to the trigger's rect) so it never gets clipped by the
    floating panel's / bottom sheet's overflow. */
-import { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useId } from 'react'
 
 export default function Combobox({ value, placeholder, options, onChange, disabled, size = 'sm' }) {
   const [open, setOpen] = useState(false);
@@ -13,6 +13,8 @@ export default function Combobox({ value, placeholder, options, onChange, disabl
   const btnRef = useRef(null);
   const popRef = useRef(null);
   const inputRef = useRef(null);
+  const listboxId = useId();
+  const optionId = (i) => `${listboxId}-option-${i}`;
 
   const lg = size === 'lg';
   const RENDER_CAP = 300; // real road lists can be thousands — cap rendered rows so the popup stays snappy
@@ -66,6 +68,11 @@ export default function Combobox({ value, placeholder, options, onChange, disabl
       <button
         ref={btnRef}
         type="button"
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls={listboxId}
+        aria-activedescendant={open && filtered[hi] ? optionId(hi) : undefined}
         onClick={() => (open ? setOpen(false) : openIt())}
         disabled={disabled}
         className={[
@@ -106,10 +113,13 @@ export default function Combobox({ value, placeholder, options, onChange, disabl
               onChange={e => { setQ(e.target.value); setHi(0); }}
               onKeyDown={onKey}
               placeholder="Search…"
+              aria-label={placeholder || 'Search options'}
+              aria-autocomplete="list"
+              aria-controls={listboxId}
               className="w-full pl-8 pr-3 py-2.5 border border-[#A27B5C]/25 rounded-lg bg-[#DCD7C9] text-sm text-[#2C3930] outline-none"
             />
           </div>
-          <div className="overflow-y-auto">
+          <div id={listboxId} role="listbox" aria-label={placeholder || 'Options'} className="overflow-y-auto">
             {filtered.length === 0 ? (
               <div className="px-[14px] py-4 text-[13px] text-[#B0AA9E] text-center">
                 No matches
@@ -117,6 +127,9 @@ export default function Combobox({ value, placeholder, options, onChange, disabl
             ) : filtered.map((o, i) => (
               <div
                 key={o}
+                id={optionId(i)}
+                role="option"
+                aria-selected={o === value}
                 onMouseEnter={() => setHi(i)}
                 onClick={() => pick(o)}
                 className={[

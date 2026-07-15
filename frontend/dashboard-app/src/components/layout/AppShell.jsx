@@ -57,7 +57,6 @@ function FloatingSidebar() {
                 }
                 style={({ isActive }) => ({
                   background: isActive ? C.mid : 'transparent',
-                  borderLeft: `3px solid ${isActive ? C.earth : 'transparent'}`,
                   color: isActive ? C.cream : 'rgba(220,215,201,.6)',
                 })}
               >
@@ -86,7 +85,7 @@ function Header({ title }) {
       className="flex items-center justify-between shrink-0 h-14 px-7 border-b border-[#C8C3B8]"
       style={{ background: C.cream }}
     >
-      <Display size={22} weight={500}>{title}</Display>
+      <Display as="h1" size={22} weight={500}>{title}</Display>
       <span
         className="rounded-full px-3.5 py-1.5 font-mono text-xs font-medium"
         style={{ background: C.deep, color: C.cream }}

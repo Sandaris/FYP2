@@ -18,6 +18,34 @@ const valMedian = (a) => {
   const m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
+// Linear-interpolation quantile (R type 7 / numpy default) over a pre-sorted array.
+const valQuantile = (sorted, q) => {
+  if (!sorted.length) return 0;
+  const pos = (sorted.length - 1) * q;
+  const base = Math.floor(pos);
+  const rest = pos - base;
+  return base + 1 < sorted.length ? sorted[base] + rest * (sorted[base + 1] - sorted[base]) : sorted[base];
+};
+// Tukey five-number summary (min/Q1/median/Q3/max within 1.5×IQR fences) plus outliers,
+// for the recent-transactions price boxplot.
+const valBoxStats = (values) => {
+  const sorted = (values || []).filter((v) => Number(v) > 0).map(Number).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const q1 = valQuantile(sorted, 0.25);
+  const median = valQuantile(sorted, 0.5);
+  const q3 = valQuantile(sorted, 0.75);
+  const iqr = q3 - q1;
+  const lowFence = q1 - 1.5 * iqr;
+  const highFence = q3 + 1.5 * iqr;
+  const inliers = sorted.filter((v) => v >= lowFence && v <= highFence);
+  const outliers = sorted.filter((v) => v < lowFence || v > highFence);
+  return {
+    min: inliers.length ? inliers[0] : sorted[0],
+    q1, median, q3,
+    max: inliers.length ? inliers[inliers.length - 1] : sorted[sorted.length - 1],
+    outliers, n: sorted.length,
+  };
+};
 const rmCompact = (n) => {
   if (!n) return '—';
   if (n >= 1e6) return 'RM ' + (n / 1e6).toFixed(2) + 'M';
@@ -65,7 +93,7 @@ const RecentTh = ({ children, right }) => (
     position: 'sticky', top: 0, zIndex: 1, background: C.raised,
     textAlign: right ? 'right' : 'left', padding: '8px 10px',
     fontFamily: "'DM Sans',sans-serif", fontSize: 10, fontWeight: 600,
-    textTransform: 'uppercase', letterSpacing: '.07em', color: C.earth,
+    textTransform: 'uppercase', letterSpacing: '.07em', color: C.earthText,
     whiteSpace: 'nowrap', borderBottom: `1.5px solid ${C.border}`,
   }}>{children}</th>
 );
@@ -117,6 +145,7 @@ const YearLineChart = ({ rows }) => {
     const n = rows.length;
     const up = rows[n - 1].avg >= rows[0].avg;
     const color = up ? C.up : C.down;
+    const textColor = up ? C.upText : C.down; // readable variant for on-chart text labels
     const grad = new echarts.graphic.LinearGradient(0, 0, 0, 1, [
       { offset: 0, color: up ? 'rgba(45,122,79,0.22)' : 'rgba(166,50,40,0.22)' },
       { offset: 1, color: up ? 'rgba(45,122,79,0)' : 'rgba(166,50,40,0)' },
@@ -129,8 +158,8 @@ const YearLineChart = ({ rows }) => {
     // old chart; the first year has no prior year, so it shows no pill.
     data.forEach((d, i) => {
       if (i === 0) { d.label = { show: false }; return; }
-      const c = d.pct >= 0 ? C.up : C.down;
-      d.label = { color: c, borderColor: c };
+      const c = d.pct >= 0 ? C.upText : C.down;
+      d.label = { color: c, borderColor: d.pct >= 0 ? C.up : C.down };
     });
     chart.setOption({
       animationDuration: 2000, animationEasing: 'cubicOut',
@@ -145,7 +174,7 @@ const YearLineChart = ({ rows }) => {
           return `<div style="font-family:'JetBrains Mono',monospace;font-size:12px">${d.year}</div>` +
             `<div style="margin-top:3px">Avg price: <b>${rmCompact(d.value)}</b></div>` +
             `<div>${d.n} transaction${d.n === 1 ? '' : 's'}</div>` +
-            (p != null ? `<div style="margin-top:3px;color:${p >= 0 ? '#9ED9B0' : '#E6A6A0'}">YoY ${p >= 0 ? '+' : ''}${p.toFixed(1)}%</div>` : '');
+            (p != null ? `<div style="margin-top:3px;color:${p >= 0 ? C.upLight : C.downLight}">YoY ${p >= 0 ? '+' : ''}${p.toFixed(1)}%</div>` : '');
         },
       },
       xAxis: {
@@ -165,20 +194,126 @@ const YearLineChart = ({ rows }) => {
         label: {
           show: true, position: 'top', distance: 7,
           formatter: (p) => (p.data.pct != null ? (p.data.pct >= 0 ? '+' : '') + p.data.pct.toFixed(1) + '%' : ''),
-          color, fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, fontWeight: 700,
+          color: textColor, fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, fontWeight: 700,
           backgroundColor: C.raised, borderColor: color, borderWidth: 1, borderRadius: 8, padding: [2, 5],
         },
         // latest average price labelled at the line end (life-expectancy style)
         endLabel: {
           show: true, distance: 6,
           formatter: (p) => rmCompact(p.data.value),
-          color, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, fontWeight: 700,
+          color: textColor, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, fontWeight: 700,
         },
         labelLayout: { moveOverlap: 'shiftY' },
       }],
     }, true);
   }, [rows]);
   return <div ref={elRef} style={{ width: '100%', height: 196 }}/>;
+};
+
+/* Horizontal ECharts boxplot of the "Recent transactions" prices — five-number
+   summary (min/Q1/median/Q3/max) as a box + whiskers, with 1.5×IQR outliers
+   plotted as separate dots so unusually high/low sales stay visible instead of
+   stretching the box. */
+const RecentPriceBoxplot = ({ stats, markers }) => {
+  const elRef = useRef(null);
+  const chartRef = useRef(null);
+  useEffect(() => {
+    if (!echarts || !elRef.current) return undefined;
+    const chart = echarts.init(elRef.current, CHART_THEME, { renderer: 'canvas' });
+    chartRef.current = chart;
+    const ro = new ResizeObserver(() => chart.resize());
+    ro.observe(elRef.current);
+    const raf = requestAnimationFrame(() => chart.resize());
+    const t = setTimeout(() => chart.resize(), 300);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t); ro.disconnect(); chart.dispose(); chartRef.current = null; };
+  }, []);
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !echarts) return;
+    if (!stats) { chart.clear(); return; }
+    const mk = markers || [];
+    chart.setOption({
+      animationDuration: 600, animationEasing: 'cubicOut',
+      backgroundColor: 'transparent',
+      grid: { left: 4, right: 16, top: 22, bottom: 22, containLabel: true },
+      tooltip: {
+        trigger: 'item', backgroundColor: C.deep, borderColor: C.deep, padding: [8, 10],
+        textStyle: { color: C.cream, fontFamily: "'DM Sans',sans-serif", fontSize: 12 },
+        formatter: (p) => {
+          if (p.seriesType === 'boxplot') {
+            return `<div style="font-family:'DM Sans',sans-serif;font-size:11.5px;line-height:1.7">` +
+              `Max: <b>${rmCompact(p.data[4])}</b><br/>Q3: <b>${rmCompact(p.data[3])}</b><br/>` +
+              `Median: <b>${rmCompact(p.data[2])}</b><br/>Q1: <b>${rmCompact(p.data[1])}</b><br/>` +
+              `Min: <b>${rmCompact(p.data[0])}</b></div>`;
+          }
+          if (p.seriesName === 'Model estimate') {
+            const item = mk[p.dataIndex];
+            return `${item.label}${item.active ? ' (current)' : ''}: <b>${rmCompact(item.point)}</b>`;
+          }
+          return `Outlier: <b>${rmCompact(p.data[0])}</b>`;
+        },
+      },
+      xAxis: {
+        type: 'value', scale: true,
+        axisLine: { lineStyle: { color: C.border } },
+        splitLine: { lineStyle: { color: C.border, opacity: 0.5 } },
+        axisLabel: { color: C.mid, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, formatter: rmCompact },
+      },
+      yAxis: { type: 'category', data: ['Price'], show: false },
+      series: [
+        {
+          name: 'Price distribution', type: 'boxplot',
+          data: [[stats.min, stats.q1, stats.median, stats.q3, stats.max]],
+          boxWidth: ['46%', '62%'],
+          itemStyle: { color: C.cream, borderColor: C.earth, borderWidth: 1.6 },
+          emphasis: { itemStyle: { borderColor: C.deep, borderWidth: 2 } },
+          z: 2,
+        },
+        {
+          name: 'Outliers', type: 'scatter',
+          data: stats.outliers.map((v) => [v, 0]),
+          symbolSize: 6,
+          itemStyle: { color: C.down, opacity: 0.6 },
+          z: 3,
+        },
+        {
+          // One point per model the user has picked in this session, at that
+          // model's estimated value — stays plotted when the user switches
+          // models so they can compare where each estimate falls at a glance.
+          // Per-point itemStyle/label (rather than series-level callbacks) since
+          // ECharts only special-cases `itemStyle.color` callbacks per data point —
+          // borderColor/borderWidth/opacity/label style are not, so each marker
+          // carries its own literal style object instead.
+          name: 'Model estimate', type: 'scatter',
+          data: mk.map((item, idx) => ({
+            value: [item.point, 0],
+            symbolSize: item.active ? 20 : 13,
+            itemStyle: {
+              color: item.color,
+              borderColor: item.active ? C.deep : C.white,
+              borderWidth: item.active ? 2.5 : 1.4,
+              opacity: item.active ? 1 : 0.85,
+            },
+            label: {
+              // Once a second model has been picked, label every marker (not just
+              // the active one) so the points stay identifiable on the plot itself.
+              show: mk.length > 1 || item.active,
+              position: idx % 2 === 0 ? 'top' : 'bottom',
+              distance: 8,
+              formatter: `${item.label} · ${rmCompact(item.point)}`,
+              fontFamily: "'JetBrains Mono',monospace",
+              fontSize: item.active ? 10 : 9.5,
+              fontWeight: item.active ? 700 : 600,
+              color: item.active ? C.deep : item.color,
+            },
+          })),
+          symbol: 'diamond',
+          z: 4,
+        },
+      ],
+    }, true);
+  }, [stats, markers]);
+  return <div ref={elRef} style={{ width: '100%', height: 96 }}/>;
 };
 
 /* ---- region aggregation (area-level sample) --------------------------- */
@@ -245,14 +380,16 @@ const MODEL_DEFS = [
   { key: 'ft', label: 'FT-Transformer', short: 'FT-Tx',
     note: 'Feature-Tokenizer + Transformer — a tabular deep-learning model that turns every feature into a token and attends across them.' },
 ];
+// One distinct colour per model, reused for its marker on the price-distribution boxplot.
+const MODEL_MARKER_COLOR = { rf: C.up, xgboost: C.earth, ft: C.stable };
 
 /* ---- small presentational bits --------------------------------------- */
-const StatTile = ({ label, value, sub, accent }) => (
+const StatTile = ({ label, value, sub, accent, hint }) => (
   <div style={{
     background: C.cream, border: `1px solid ${C.border}`, borderRadius: 10,
     padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4,
   }}>
-    <Eyebrow style={{ fontSize: 10 }}>{label}</Eyebrow>
+    <Eyebrow style={{ fontSize: 10, cursor: hint ? 'help' : undefined }} title={hint}>{label}</Eyebrow>
     <Mono size={17} color={accent || C.deep}>{value}</Mono>
     {sub && <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11, color: C.mid }}>{sub}</span>}
   </div>
@@ -305,6 +442,13 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
       fhPct,
     };
   }, [recentTxns, sel.propertyType]);
+
+  // Five-number summary of prices across the exact same rows shown in the
+  // "Recent transactions" table, for the boxplot underneath it.
+  const recentBoxStats = useMemo(
+    () => valBoxStats((recentTxns || []).map((r) => r.Price)),
+    [recentTxns],
+  );
 
   /* Latest actual transactions for the chosen area, straight from the cleaned
      NAPIC Open Transaction Data (/data/query => transactions.parquet), newest
@@ -498,6 +642,24 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
   const hasDisplayableEstimate = hasLiveEstimate && !guardChecking && !avgGuardBlocked;
   const estimateLoading = (!hasLiveEstimate && !activeApiError && (loading || apiLoading || !!payloadSig)) || guardChecking;
   const estimateUnavailable = (!hasLiveEstimate && !!activeApiError) || avgGuardBlocked;
+
+  // Every model the user has switched to for this exact scope gets a marker on the
+  // "Recent transactions" boxplot, keyed by model, so switching models ADDS a point
+  // instead of replacing the previous one. Cleared when the location/property-type
+  // scope changes, since a marker only makes sense against the distribution it was
+  // computed for.
+  const [modelMarkers, setModelMarkers] = useState({});
+  useEffect(() => { setModelMarkers({}); },
+    [sel.state, sel.district, sel.mukim, sel.area, sel.propertyType]);
+  useEffect(() => {
+    if (!hasDisplayableEstimate) return;
+    setModelMarkers((prev) => (
+      prev[m.key]?.point === m.point ? prev : { ...prev, [m.key]: { key: m.key, label: m.short, point: m.point } }
+    ));
+  }, [hasDisplayableEstimate, m.key, m.point, m.short]);
+  const boxplotMarkers = useMemo(() => Object.values(modelMarkers).map((mk) => ({
+    ...mk, color: MODEL_MARKER_COLOR[mk.key] || C.deep, active: mk.key === m.key,
+  })), [modelMarkers, m.key]);
   const unavailableMessage = avgGuardBlocked
     ? (avgGuard.avg
         ? `Data is not available: model estimate differs by ${(avgGuard.delta * 100).toFixed(0)}% from the recent ${avgGuard.scope === 'type' ? shortType(sel.propertyType) : 'similar-property'} average (${rmCompact(avgGuard.avg)}, ${avgGuard.n} transactions).`
@@ -579,9 +741,12 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
     <div style={{ height: fullpage ? 'auto' : '100%', display: 'flex', flexDirection: 'column', background: C.raised, position: 'relative' }}>
       {/* header */}
       <div style={{ padding: '15px 20px 12px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-        <Eyebrow>Automated Valuation</Eyebrow>
+        <Eyebrow
+          style={{ cursor: 'help', width: 'fit-content' }}
+          title="AI-estimated market value from models trained on NAPIC Open Transaction Data — a data-driven estimate, not an official appraisal."
+        >Automated Valuation</Eyebrow>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 2, flexWrap: 'wrap' }}>
-          <Display size={21} weight={500}>{sel.area || sel.district}</Display>
+          <Display as="h2" size={21} weight={500}>{sel.area || sel.district}</Display>
           <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: C.mid }}>
             {[sel.district, sel.state].filter(Boolean).join(', ')} · {regCount.toLocaleString('en-MY')} comparable transactions · NAPIC 2021–2026
           </span>
@@ -602,7 +767,8 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
                 const on = i === modelIdx;
                 return (
                   <button key={x.label} onClick={() => setModelIdx(i)} style={{
-                    padding: '9px 4px', borderRadius: 8, cursor: 'pointer',
+                    minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '4px', borderRadius: 8, cursor: 'pointer',
                     border: `1px solid ${on ? C.deep : C.border}`,
                     background: on ? C.deep : C.cream, color: on ? C.cream : C.mid,
                     fontFamily: "'DM Sans',sans-serif", fontSize: 12, fontWeight: 600,
@@ -619,7 +785,7 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
               {hasDisplayableEstimate && (
                 <span style={{
                   marginLeft: 8, padding: '1px 7px', borderRadius: 9999,
-                  background: C.up + '22', color: C.up, fontSize: 9,
+                  background: C.up + '22', color: C.upText, fontSize: 9,
                   letterSpacing: '.12em', fontWeight: 600,
                 }}>LIVE</span>
               )}
@@ -631,7 +797,7 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
                 }}>DATA UNAVAILABLE</span>
               )}
               {estimateLoading && (
-                <span style={{ marginLeft: 8, color: C.muted, fontSize: 9, letterSpacing: '.12em' }}>
+                <span style={{ marginLeft: 8, color: C.mutedText, fontSize: 9, letterSpacing: '.12em' }}>
                   FETCHING…
                 </span>
               )}
@@ -664,32 +830,33 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
               <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: C.mid }}>
                 Likely range {rmCompact(low)} – {rmCompact(high)}
               </span>
-              {valPerSqm && <Mono size={12} color={C.earth}>≈ RM {valPerSqm.toLocaleString()}/m²</Mono>}
+              {valPerSqm && <Mono size={12} color={C.earthText}>≈ RM {valPerSqm.toLocaleString()}/m²</Mono>}
             </div>
 
             {/* confidence band across all models */}
             <div style={{ position: 'relative', height: 46, marginTop: 18, display: hasDisplayableEstimate ? 'block' : 'none' }}>
               <div style={{ position: 'absolute', top: 20, left: 0, right: 0, height: 4,
                 background: C.cream, borderRadius: 2, border: `1px solid ${C.border}` }}/>
-              <div style={{ position: 'absolute', top: 19, height: 6, borderRadius: 3,
-                left: pct(low) + '%', width: (pct(high) - pct(low)) + '%',
-                background: C.earth + '55', border: `1px solid ${C.earth}`, transition: 'left .35s, width .35s' }}/>
+              <div style={{ position: 'absolute', top: 19, left: 0, right: 0, height: 6, borderRadius: 3,
+                background: C.earth + '55', border: `1px solid ${C.earth}`,
+                clipPath: `inset(0 ${100 - pct(high)}% 0 ${pct(low)}%)`, transition: 'clip-path .35s' }}/>
               {models.map((x, i) => i !== modelIdx && x.live && (
                 <div key={x.label} style={{ position: 'absolute', top: 16, width: 2, height: 12,
                   left: pct(x.point) + '%', background: C.muted, transform: 'translateX(-50%)' }}/>
               ))}
-              <div style={{ position: 'absolute', top: 12, left: pct(m.point) + '%', transform: 'translateX(-50%)', transition: 'left .35s' }}>
+              <div style={{ position: 'absolute', top: 12, left: 0,
+                transform: `translateX(calc(${pct(m.point)}% - 50%))`, transition: 'transform .35s' }}>
                 <div style={{ width: 14, height: 14, borderRadius: '50%', background: C.earth, border: `2px solid ${C.raised}`, boxShadow: '0 2px 6px rgba(44,57,48,.3)' }}/>
               </div>
-              <div style={{ position: 'absolute', bottom: 0, left: 0, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: C.muted }}>{rmCompact(dLow)}</div>
-              <div style={{ position: 'absolute', bottom: 0, right: 0, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: C.muted }}>{rmCompact(dHigh)}</div>
+              <div style={{ position: 'absolute', bottom: 0, left: 0, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: C.mutedText }}>{rmCompact(dLow)}</div>
+              <div style={{ position: 'absolute', bottom: 0, right: 0, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: C.mutedText }}>{rmCompact(dHigh)}</div>
             </div>
 
             <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}`,
               display: hasDisplayableEstimate ? 'grid' : 'none', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <Eyebrow style={{ fontSize: 9.5, whiteSpace: 'nowrap' }}>Confidence</Eyebrow>
-                <Mono size={15} color={C.up}>{m.conf != null ? m.conf + '%' : '—'}</Mono>
+                <Mono size={15} color={C.upText}>{m.conf != null ? m.conf + '%' : '—'}</Mono>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <Eyebrow style={{ fontSize: 9.5, whiteSpace: 'nowrap' }} title="Median absolute % error on the 2025 hold-out">MdAPE</Eyebrow>
@@ -697,7 +864,7 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <Eyebrow style={{ fontSize: 9.5, whiteSpace: 'nowrap' }}>vs median</Eyebrow>
-                <Mono size={15} color={m.point >= regMedian ? C.up : C.down}>
+                <Mono size={15} color={m.point >= regMedian ? C.upText : C.down}>
                   {(m.point >= regMedian ? '+' : '') + ((m.point / regMedian - 1) * 100).toFixed(1)}%
                 </Mono>
               </div>
@@ -716,12 +883,16 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
         {/* ===== RIGHT — region data ===== */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
           <div className="val-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-            <StatTile label="Median price" value={rmCompact(regMedian)} sub={`${regCount.toLocaleString('en-MY')} sales`}/>
-            <StatTile label="Median RM/m²" value={regPpsm ? 'RM ' + regPpsm.toLocaleString() : '—'} sub="built-up"/>
+            <StatTile label="Median price" value={rmCompact(regMedian)} sub={`${regCount.toLocaleString('en-MY')} sales`}
+              hint="Middle transaction price among comparable sales in this area — less skewed by outliers than a mean average."/>
+            <StatTile label="Median RM/m²" value={regPpsm ? 'RM ' + regPpsm.toLocaleString() : '—'} sub="built-up"
+              hint="Median price per square metre of built-up floor area — lets you compare units of different sizes on equal footing."/>
             <StatTile label="Median built-up" value={regFloor ? regFloor + ' m²' : '—'}
-              sub={regLand ? regLand + ' m² land' : 'strata'}/>
+              sub={regLand ? regLand + ' m² land' : 'strata'}
+              hint="Median built-up floor area among comparable sales, plus median land size where the property is landed (not strata)."/>
             <StatTile label="Trend ’21→’26" value={(yUp ? '+' : '') + (yGrowth || 0).toFixed(1) + '%'}
-              accent={yUp ? C.up : C.down} sub={(regFhPct != null ? regFhPct : 0) + '% freehold'}/>
+              accent={yUp ? C.upText : C.down} sub={(regFhPct != null ? regFhPct : 0) + '% freehold'}
+              hint="Change in average transaction price for this area from 2021 to the latest year shown, based on NAPIC Open Transaction Data."/>
           </div>
 
           {/* recent transactions — real NAPIC Open Transaction Data, scoped to the
@@ -729,7 +900,7 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
               lead the area read-out. */}
           <Card style={{ padding: 18 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
-              <Display size={16} weight={500}>Recent transactions</Display>
+              <Display as="h3" size={16} weight={500}>Recent transactions</Display>
               <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11.5, color: C.mid }}>
                 {recentTxns && recentTxns.length
                   ? (recentTotal > recentTxns.length
@@ -757,27 +928,61 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
                 Loading recent transactions…
               </div>
             ) : (recentTxns && recentTxns.length) ? (
-              <div style={{ marginTop: 10, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
-                <div style={{ maxHeight: 300, overflow: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr>
-                        <RecentTh>Date</RecentTh>
-                        <RecentTh>Type</RecentTh>
-                        <RecentTh>Road / Area</RecentTh>
-                        <RecentTh right>m²</RecentTh>
-                        <RecentTh right>Price</RecentTh>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recentTxns.map((r, i) => <RecentTxnRow key={i} r={r} i={i}/>)}
-                    </tbody>
-                  </table>
+              <>
+                <div style={{ marginTop: 10, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ maxHeight: 300, overflow: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          <RecentTh>Date</RecentTh>
+                          <RecentTh>Type</RecentTh>
+                          <RecentTh>Road / Area</RecentTh>
+                          <RecentTh right>m²</RecentTh>
+                          <RecentTh right>Price</RecentTh>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentTxns.map((r, i) => <RecentTxnRow key={i} r={r} i={i}/>)}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+                {/* price distribution — boxplot (min/Q1/median/Q3/max) over the same
+                    rows as the table above, with 1.5×IQR outliers marked separately */}
+                {recentBoxStats && (
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+                      <Eyebrow
+                        style={{ fontSize: 10, cursor: 'help' }}
+                        title="Box spans Q1–Q3 (middle 50% of sales); whiskers reach the closest values within 1.5× the interquartile range; dots beyond that are outliers."
+                      >Price distribution</Eyebrow>
+                      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: C.mid }}>
+                        {rmCompact(recentBoxStats.min)} – {rmCompact(recentBoxStats.max)}
+                      </span>
+                    </div>
+                    <RecentPriceBoxplot stats={recentBoxStats} markers={boxplotMarkers}/>
+                    {boxplotMarkers.length > 0 && (
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        {boxplotMarkers.map((mk) => (
+                          <div key={mk.key} style={{ display: 'flex', alignItems: 'center', gap: 5, opacity: mk.active ? 1 : 0.65 }}>
+                            <span style={{
+                              width: 8, height: 8, borderRadius: 2, background: mk.color, transform: 'rotate(45deg)',
+                              border: mk.active ? `1.5px solid ${C.deep}` : `1px solid ${C.white}`,
+                            }}/>
+                            <span style={{
+                              fontFamily: "'DM Sans',sans-serif", fontSize: 10.5, color: C.mid,
+                              fontWeight: mk.active ? 700 : 400,
+                            }}>{mk.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             ) : (
               <div style={{
-                marginTop: 6, padding: '14px 2px', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: C.muted,
+                marginTop: 6, padding: '14px 2px', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: C.mutedText,
               }}>No transaction records found for this selection.</div>
             )}
           </Card>
@@ -785,13 +990,13 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
           {/* avg price by property type — real averages from the Open Transaction Data */}
           <Card style={{ padding: 18 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
-              <Display size={16} weight={500}>Average price by property type</Display>
+              <Display as="h3" size={16} weight={500}>Average price by property type</Display>
               <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11.5, color: C.mid }}>
                 avg · count
               </span>
             </div>
             {byType.length === 0 ? (
-              <div style={{ marginTop: 12, padding: '14px 0', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: C.muted }}>
+              <div style={{ marginTop: 12, padding: '14px 0', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: C.mutedText }}>
                 No transaction records found for this selection.
               </div>
             ) : (
@@ -801,15 +1006,15 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
                 return (
                   <div key={t.type} style={{ display: 'grid', gridTemplateColumns: '128px 1fr 118px', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12.5,
-                      color: dom ? C.earth : C.deep, fontWeight: dom ? 600 : 400,
+                      color: dom ? C.earthText : C.deep, fontWeight: dom ? 600 : 400,
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortType(t.type)}</span>
                     <div style={{ height: 14, background: C.cream, borderRadius: 4, overflow: 'hidden', border: `1px solid ${C.border}` }}>
-                      <div style={{ width: (t.avg / maxTypeAvg * 100) + '%', height: '100%',
-                        background: dom ? C.earth : C.light, transition: 'width .8s cubic-bezier(.16,1,.3,1)' }}/>
+                      <div style={{ transform: `scaleX(${t.avg / maxTypeAvg})`, transformOrigin: 'left', width: '100%', height: '100%',
+                        background: dom ? C.earth : C.light, transition: 'transform .8s cubic-bezier(.16,1,.3,1)' }}/>
                     </div>
                     <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <Mono size={12}>{rmCompact(t.avg)}</Mono>
-                      <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10.5, color: C.muted }}> · {t.n}</span>
+                      <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10.5, color: C.mutedText }}> · {t.n}</span>
                     </div>
                   </div>
                 );
@@ -823,7 +1028,7 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
               clearly and the up/down trajectory gets its own panel. */}
           <Card style={{ padding: 18 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
-              <Display size={16} weight={500}>Average transacted price by year</Display>
+              <Display as="h3" size={16} weight={500}>Average transacted price by year</Display>
               <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11.5, color: C.mid }}>
                 {yearScope === 'type' && sel.propertyType
                   ? shortType(sel.propertyType)
@@ -831,29 +1036,33 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
               </span>
             </div>
             {yearAvg.length === 0 ? (
-              <div style={{ marginTop: 12, padding: '14px 0', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: C.muted }}>
+              <div style={{ marginTop: 12, padding: '14px 0', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: C.mutedText }}>
                 No transaction records found for this selection.
               </div>
             ) : (
             <div style={{ marginTop: 22, display: 'flex', gap: 20, alignItems: 'stretch', flexWrap: 'wrap' }}>
               {/* left — average price (bars) + volume (dots) */}
               <div style={{ flex: '1 1 248px', minWidth: 0 }}>
-                <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11, color: C.muted,
+                <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11, color: C.mutedText,
                   textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 12 }}>
                   bar = avg price · ● = volume
                 </div>
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 186 }}>
                   {yearAvg.map(y => {
+                    const MAX_BAR_H = 146; // 26 (min) + 120 (range)
                     const h = 26 + ((y.avg - minYear) / (maxYear - minYear || 1)) * 120;
                     return (
                       <div key={y.y} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
                         <Mono size={10} color={C.mid}>{rmCompact(y.avg)}</Mono>
-                        <div style={{ width: '100%', maxWidth: 42, height: h, background: `linear-gradient(180deg, ${C.light}, ${C.deep})`,
-                          borderRadius: '5px 5px 0 0', transition: 'height .8s cubic-bezier(.16,1,.3,1)' }}/>
+                        <div style={{ width: '100%', maxWidth: 42, height: MAX_BAR_H, display: 'flex', alignItems: 'flex-end' }}>
+                          <div style={{ width: '100%', height: '100%', transform: `scaleY(${h / MAX_BAR_H})`, transformOrigin: 'bottom',
+                            background: `linear-gradient(180deg, ${C.light}, ${C.deep})`,
+                            borderRadius: '5px 5px 0 0', transition: 'transform .8s cubic-bezier(.16,1,.3,1)' }}/>
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.earth,
                             opacity: 0.35 + 0.65 * (y.n / maxVol), display: 'inline-block' }}/>
-                          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: C.muted }}>{y.n}</span>
+                          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: C.mutedText }}>{y.n}</span>
                         </div>
                         <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11, color: C.mid }}>{y.y}</span>
                       </div>
@@ -865,12 +1074,12 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
               {/* right — price-growth trajectory (line) */}
               <div style={{ flex: '1 1 248px', minWidth: 0, borderLeft: `1px solid ${C.border}`, paddingLeft: 20 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11, color: C.muted,
+                  <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11, color: C.mutedText,
                     textTransform: 'uppercase', letterSpacing: '.07em' }}>price growth</span>
                   {yearAvg.length > 1 && (
                     <span style={{
                       fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5, fontWeight: 600,
-                      color: yUp ? C.up : C.down, background: (yUp ? C.up : C.down) + '18',
+                      color: yUp ? C.upText : C.down, background: (yUp ? C.up : C.down) + '18',
                       padding: '2px 8px', borderRadius: 9999, whiteSpace: 'nowrap',
                     }}>P/L {(yUp ? '+' : '') + yGrowth.toFixed(1) + '%'}</span>
                   )}
@@ -884,7 +1093,7 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
                     fontFamily: "'DM Sans',sans-serif", fontSize: 11.5, color: C.mid,
                   }}>
                     <span>Overall P/L ({yearAvg[0].y}-{yearAvg[yearAvg.length - 1].y})</span>
-                    <Mono size={11.5} color={yUp ? C.up : C.down}>
+                    <Mono size={11.5} color={yUp ? C.upText : C.down}>
                       {(yUp ? '+' : '') + yGrowth.toFixed(1) + '%'}
                     </Mono>
                   </div>
@@ -894,7 +1103,7 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
             )}
           </Card>
 
-          <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11, color: C.muted, fontStyle: 'italic' }}>
+          <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11, color: C.mutedText, fontStyle: 'italic' }}>
             Indicative AVM estimate based on NAPIC 2021–2026 comparable transactions. Areas in sq.m. Not a formal valuation.
           </div>
         </div>

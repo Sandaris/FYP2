@@ -58,7 +58,7 @@ const apiTxnToRow = (r, state) => {
 
 const iconBtn = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
-  width: 32, height: 32, borderRadius: 8, background: C.cream,
+  width: 44, height: 44, borderRadius: 8, background: C.cream,
   border: `1px solid ${C.border}`, color: C.mid, cursor: 'pointer', flexShrink: 0,
 };
 
@@ -428,7 +428,7 @@ export default function TransactionMapPage() {
           }}>
             <div>
               <Eyebrow>Explore</Eyebrow>
-              <Display size={20} weight={500} style={{ display: 'block', marginTop: 2 }}>Location Search</Display>
+              <Display as="h2" size={20} weight={500} style={{ display: 'block', marginTop: 2 }}>Location Search</Display>
             </div>
             <button onClick={() => setPanelOpen(false)} title="Collapse"
               style={iconBtn}>

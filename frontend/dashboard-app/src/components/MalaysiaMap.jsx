@@ -753,7 +753,7 @@ const MalaysiaMap = ({
 
 const ZoomBtn = ({ children, onClick, label }) => (
   <button onClick={onClick} title={label} aria-label={label} style={{
-    width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
     background: C.cream, border: `1px solid ${C.border}`, borderRadius: 9,
     cursor: 'pointer', boxShadow: '0 2px 8px rgba(44,57,48,.14)', color: C.deep,
   }}
