@@ -3,7 +3,9 @@ import ReactECharts from 'echarts-for-react'
 import * as echarts from 'echarts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatCard, ScrollReveal } from '@/components/shared'
+import { Eyebrow } from '@/components/shared/primitives'
 import { C } from '@/lib/colors'
+import { API } from '@/lib/api'
 import {
   CHART_THEME,
   chartAreaGrad,
@@ -102,8 +104,36 @@ const STATE_AVG = [
 ]
 const STATE_HIGH = STATE_AVG[0] // Kuala Lumpur — highest average price
 
-const PMED = {}; MKT_PTYPE.forEach(d => { PMED[d[0]] = d[2] })
 const DMED = {}; MKT_DIST.forEach(d => { DMED[d[0]] = d[2] })
+
+// Malaysian states/federal territories, alphabetical — options for the state filter
+const MY_STATES = [
+  'Johor', 'Kedah', 'Kelantan', 'Kuala Lumpur', 'Labuan', 'Melaka', 'Negeri Sembilan',
+  'Pahang', 'Penang', 'Perak', 'Perlis', 'Putrajaya', 'Sabah', 'Sarawak', 'Selangor', 'Terengganu',
+]
+// '' = whole-country tab, always first
+const STATE_TABS = ['', ...MY_STATES]
+const stateLabel = (s) => s || 'Malaysia (All)'
+
+// backend RM-band keys (plain hyphen) -> display labels (en dash)
+const BAND_LABEL = {
+  '<200k': '<200k', '200-300k': '200–300k', '300-400k': '300–400k', '400-500k': '400–500k',
+  '500-700k': '500–700k', '700k-1m': '700k–1m', '1-1.5m': '1–1.5m', '>1.5m': '>1.5m',
+}
+
+// raw `Property Type` dataset labels -> the shorter display labels used on this page
+const PTYPE_LABEL = {
+  '2 - 2 1/2 Storey Terraced': '2-2½ Storey Terraced',
+  '1 - 1 1/2 Storey Terraced': '1-1½ Storey Terraced',
+  '1 - 1 1/2 Storey Semi-Detached': '1-1½ Storey Semi-D',
+  '2 - 2 1/2 Storey Semi-Detached': '2-2½ Storey Semi-D',
+}
+const ptypeLabel = (t) => PTYPE_LABEL[t] || t
+
+// default view (All Malaysia) before the live fetch resolves — same numbers as MKT_PTYPE
+const DEFAULT_PTYPE_ROWS = MKT_PTYPE.map(([label, count, median]) => ({ label, count, median }))
+const DEFAULT_BAND_ROWS = MKT_HIST.map(([band, count]) => ({ band, count }))
+const DEFAULT_TENURE_ROWS = MKT_TENURE.map((t) => ({ tenure: t.name, count: t.value }))
 
 // ---- shared chart helpers -------------------------------------------------
 const mFmt = (n) => Number(n).toLocaleString('en-US')
@@ -227,6 +257,34 @@ const ChartCard = ({ title, note, children }) => (
   </Card>
 )
 
+// ---- state filter — a row of "folder" tabs sitting on top of the panel below
+const StateFilterBar = ({ value, onChange, loading }) => (
+  <div className="flex items-end gap-2">
+    <div className="flex gap-1.5 overflow-x-auto flex-1 pb-px" style={{ scrollbarWidth: 'thin' }}>
+      {STATE_TABS.map((s) => {
+        const active = value === s
+        return (
+          <button
+            key={s || 'all'}
+            onClick={() => onChange(s)}
+            className="shrink-0 font-sans text-[12.5px] font-semibold px-4 py-2 rounded-t-lg border whitespace-nowrap transition-colors duration-150"
+            style={active ? {
+              background: C.deep, color: C.cream, borderColor: C.deep,
+            } : {
+              background: C.raised, color: C.mid, borderColor: C.border, borderBottomColor: 'transparent',
+            }}
+          >
+            {stateLabel(s)}
+          </button>
+        )
+      })}
+    </div>
+    {loading && (
+      <span className="shrink-0 font-sans text-[11px] pb-2" style={{ color: C.muted }}>Loading…</span>
+    )}
+  </div>
+)
+
 // ---- Main page ------------------------------------------------------------
 export default function MarketOverviewPage() {
   const volOption = useMemo(() => withChartBase({
@@ -257,50 +315,78 @@ export default function MarketOverviewPage() {
     }],
   }), [])
 
+  // ---- state filter: one live fetch drives every chart below the tab bar,
+  // except "Top districts" which stays a fixed, whole-country ranking.
+  const [stateFilter, setStateFilter] = useState('')
+  const [ptypeRows, setPtypeRows] = useState(DEFAULT_PTYPE_ROWS)
+  const [bandRows, setBandRows] = useState(DEFAULT_BAND_ROWS)
+  const [tenureRows, setTenureRows] = useState(DEFAULT_TENURE_ROWS)
+  const [statsLoading, setStatsLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setStatsLoading(true)
+    API.dataQuery({ state: stateFilter, limit: 1, full_stats: true })
+      .then((res) => {
+        if (cancelled) return
+        const s = res.stats || {}
+        setPtypeRows((s.by_type || []).map((r) => ({ label: ptypeLabel(r.type), count: r.count, median: r.median })))
+        setBandRows((s.price_bands || []).map((r) => ({ band: r.band, count: r.count })))
+        setTenureRows((s.tenure || []).map((r) => ({ tenure: r.tenure, count: r.count })))
+      })
+      .catch(() => { if (!cancelled) { setPtypeRows([]); setBandRows([]); setTenureRows([]) } })
+      .finally(() => { if (!cancelled) setStatsLoading(false) })
+    return () => { cancelled = true }
+  }, [stateFilter])
+
   const histOption = useMemo(() => withChartBase({
     grid: chartGrid({ left: 46, right: 16, top: 18, bottom: 30 }),
     tooltip: { trigger: 'axis', ...chartTooltip(), axisPointer: chartAxisPointerShadow, valueFormatter: (v) => mFmt(v) },
     xAxis: {
-      type: 'category', data: MKT_HIST.map(d => d[0]),
+      type: 'category', data: bandRows.map(d => BAND_LABEL[d.band] || d.band),
       axisLine: chartAxisLine, axisTick: { show: false },
       axisLabel: { ...chartValueAxisLabel(), fontSize: 9, interval: 0 },
     },
     yAxis: { type: 'value', splitLine: chartSplitLine, axisLabel: { ...chartValueAxisLabel(), formatter: (v) => (v >= 1000 ? v / 1000 + 'k' : v) } },
-    series: [{ type: 'bar', barWidth: '62%', data: MKT_HIST.map(d => d[1]), itemStyle: { borderRadius: chartBarRadius.vertical, color: chartGrad(0, 1, C.earthLight, C.earth) } }],
-  }), [])
+    series: [{ type: 'bar', barWidth: '62%', data: bandRows.map(d => d.count), itemStyle: { borderRadius: chartBarRadius.vertical, color: chartGrad(0, 1, C.earthLight, C.earth) } }],
+  }), [bandRows])
 
   const tenureOption = useMemo(() => withChartBase({
     tooltip: { trigger: 'item', ...chartTooltip(), formatter: (p) => `${p.name}<br/><b>${mFmt(p.value)}</b> (${p.percent}%)` },
     legend: chartLegend({ bottom: 2 }),
     series: [{
-      type: 'pie', radius: ['54%', '80%'], center: ['50%', '45%'], data: MKT_TENURE,
+      type: 'pie', radius: ['54%', '80%'], center: ['50%', '45%'],
+      data: tenureRows.map(t => ({ name: t.tenure, value: t.count })),
       itemStyle: { borderColor: C.cream, borderWidth: 3 },
       label: { ...chartCategoryAxisLabel({ fontSize: 12 }), formatter: '{b}\n{d}%' },
       labelLine: { lineStyle: { color: C.border } },
       color: [C.earth, C.mid],
     }],
-  }), [])
+  }), [tenureRows])
+
+  const ptypeTotal = useMemo(() => ptypeRows.reduce((s, d) => s + d.count, 0), [ptypeRows])
+  const ptypeMed = useMemo(() => Object.fromEntries(ptypeRows.map(d => [d.label, d.median])), [ptypeRows])
 
   const ptypeCountOption = useMemo(() => {
-    const asc = [...MKT_PTYPE].reverse()
+    const asc = [...ptypeRows].sort((a, b) => a.count - b.count)
     return withChartBase({
       grid: chartGrid({ left: 142, right: 56, top: 6, bottom: 22 }),
       tooltip: {
         trigger: 'axis', ...chartTooltip(), axisPointer: chartAxisPointerShadow,
-        formatter: (ps) => { const p = ps[0]; return `${p.name}<br/>Transactions: <b>${mFmt(p.value)}</b><br/>Median: ${mRM(PMED[p.name])}` },
+        formatter: (ps) => { const p = ps[0]; return `${p.name}<br/>Transactions: <b>${mFmt(p.value)}</b><br/>Median: ${mRM(ptypeMed[p.name])}` },
       },
       xAxis: { type: 'value', splitLine: chartSplitLine, axisLabel: { ...chartValueAxisLabel(), formatter: (v) => (v >= 1000 ? v / 1000 + 'k' : v) } },
-      yAxis: { type: 'category', data: asc.map(d => d[0]), axisTick: { show: false }, axisLine: chartAxisLine, axisLabel: chartCategoryAxisLabel() },
+      yAxis: { type: 'category', data: asc.map(d => d.label), axisTick: { show: false }, axisLine: chartAxisLine, axisLabel: chartCategoryAxisLabel() },
       series: [{
-        type: 'bar', barWidth: '62%', data: asc.map(d => d[1]),
+        type: 'bar', barWidth: '62%', data: asc.map(d => d.count),
         itemStyle: { borderRadius: chartBarRadius.horizontal, color: chartGrad(1, 0, C.earthLight, C.earth) },
         label: { show: true, position: 'right', ...chartValueAxisLabel(), formatter: (p) => mFmt(p.value) },
       }],
     })
-  }, [])
+  }, [ptypeRows, ptypeMed])
 
   const ptypePriceOption = useMemo(() => {
-    const byPrice = [...MKT_PTYPE].sort((a, b) => a[2] - b[2])
+    const byPrice = [...ptypeRows].sort((a, b) => a.median - b.median)
     return withChartBase({
       grid: chartGrid({ left: 142, right: 64, top: 6, bottom: 22 }),
       tooltip: {
@@ -308,14 +394,14 @@ export default function MarketOverviewPage() {
         formatter: (ps) => { const p = ps[0]; return `${p.name}<br/>Median price: <b>${mRM(p.value)}</b>` },
       },
       xAxis: { type: 'value', splitLine: chartSplitLine, axisLabel: { ...chartValueAxisLabel(), formatter: (v) => 'RM' + v / 1000 + 'k' } },
-      yAxis: { type: 'category', data: byPrice.map(d => d[0]), axisTick: { show: false }, axisLine: chartAxisLine, axisLabel: chartCategoryAxisLabel() },
+      yAxis: { type: 'category', data: byPrice.map(d => d.label), axisTick: { show: false }, axisLine: chartAxisLine, axisLabel: chartCategoryAxisLabel() },
       series: [{
-        type: 'bar', barWidth: '62%', data: byPrice.map(d => d[2]),
+        type: 'bar', barWidth: '62%', data: byPrice.map(d => d.median),
         itemStyle: { borderRadius: chartBarRadius.horizontal, color: chartGrad(1, 0, C.light, C.mid) },
         label: { show: true, position: 'right', ...chartValueAxisLabel(), formatter: (p) => 'RM' + Math.round(p.value / 1000) + 'k' },
       }],
     })
-  }, [])
+  }, [ptypeRows])
 
   const distOption = useMemo(() => {
     const asc = [...MKT_DIST].reverse()
@@ -386,24 +472,28 @@ export default function MarketOverviewPage() {
       </ScrollReveal>
 
       <ScrollReveal>
-        <div className="grid grid-cols-2 gap-[18px] max-[980px]:grid-cols-1">
-          <ChartCard title="Price distribution" note="count by RM band">
-            <ReactECharts option={histOption} style={{ height: 240 }} opts={chartOpts} />
-          </ChartCard>
-          <ChartCard title="Tenure" note="freehold vs leasehold">
-            <ReactECharts option={tenureOption} style={{ height: 240 }} opts={chartOpts} />
-          </ChartCard>
-        </div>
-      </ScrollReveal>
-
-      <ScrollReveal>
-        <div className="grid grid-cols-2 gap-[18px] max-[980px]:grid-cols-1">
-          <ChartCard title="Transactions by property type" note="terraced homes dominate">
-            <ReactECharts option={ptypeCountOption} style={{ height: 320 }} opts={chartOpts} />
-          </ChartCard>
-          <ChartCard title="Median price by property type" note="RM, secondary market">
-            <ReactECharts option={ptypePriceOption} style={{ height: 320 }} opts={chartOpts} />
-          </ChartCard>
+        <Eyebrow style={{ margin: '0 0 6px' }}>Filter by state — applies to every chart below</Eyebrow>
+        <StateFilterBar value={stateFilter} onChange={setStateFilter} loading={statsLoading} />
+        <div
+          className="rounded-b-2xl rounded-tr-2xl p-4 sm:p-5"
+          style={{ background: C.raised, border: `1px solid ${C.border}`, borderTop: `3px solid ${C.deep}` }}
+        >
+          <div className="grid grid-cols-2 gap-[18px] max-[980px]:grid-cols-1 mb-[18px]">
+            <ChartCard title="Price distribution" note={`count by RM band · ${stateLabel(stateFilter)}`}>
+              <ReactECharts option={histOption} style={{ height: 240 }} opts={chartOpts} showLoading={statsLoading} loadingOption={chartLoading} />
+            </ChartCard>
+            <ChartCard title="Tenure" note={`freehold vs leasehold · ${stateLabel(stateFilter)}`}>
+              <ReactECharts option={tenureOption} style={{ height: 240 }} opts={chartOpts} showLoading={statsLoading} loadingOption={chartLoading} />
+            </ChartCard>
+          </div>
+          <div className="grid grid-cols-2 gap-[18px] max-[980px]:grid-cols-1">
+            <ChartCard title="Transactions by property type" note={`${mFmt(ptypeTotal)} txns · ${stateLabel(stateFilter)}`}>
+              <ReactECharts option={ptypeCountOption} style={{ height: 320 }} opts={chartOpts} showLoading={statsLoading} loadingOption={chartLoading} />
+            </ChartCard>
+            <ChartCard title="Median price by property type" note={`RM, secondary market · ${stateLabel(stateFilter)}`}>
+              <ReactECharts option={ptypePriceOption} style={{ height: 320 }} opts={chartOpts} showLoading={statsLoading} loadingOption={chartLoading} />
+            </ChartCard>
+          </div>
         </div>
       </ScrollReveal>
 

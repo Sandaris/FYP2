@@ -739,6 +739,7 @@ SORTABLE = {"Price", "Land", "Area", "Transaction Date", "Year"}
 
 @app.get("/data/query")
 def data_query(
+    state_name: str | None = Query(None, alias="state", description="Malaysian state/territory name"),
     district: str | None = None,
     mukim: str | None = None,
     scheme: str | None = None,
@@ -752,6 +753,11 @@ def data_query(
     order: str = Query("desc", pattern="^(asc|desc)$"),
     limit: int = Query(100, le=1000),
     offset: int = Query(0, ge=0),
+    full_stats: bool = Query(
+        False,
+        description="Include the heavier breakdowns (histogram/price_bands/tenure). "
+        "Off by default — most callers only need price/yearly/by_type, and the VM is memory-constrained.",
+    ),
 ) -> dict[str, Any]:
     df = state["transactions"]
     if df is None:
@@ -762,6 +768,9 @@ def data_query(
     district = _resolve_district(district)  # map map-name -> dataset name
 
     out = df
+    if state_name:
+        from district_income import district_state_map
+        out = out[out["District"].map(district_state_map()) == state_name]
     if district:
         out = out[out["District"] == district]
     if mukim:
@@ -829,16 +838,41 @@ def data_query(
             }
             for _, r in by_type.iterrows()
         ]
-        # Price histogram (10 bins on log scale → readable buckets)
-        log_prices = np.log10(prices.clip(lower=1))
-        counts, edges = np.histogram(log_prices, bins=10)
-        stats["histogram"] = [
-            {
-                "range": [round(10 ** edges[i]), round(10 ** edges[i + 1])],
-                "count": int(counts[i]),
-            }
-            for i in range(len(counts))
-        ]
+        # Heavier breakdowns — only computed when the caller asks for them
+        # (full_stats=true). Most dataQuery callers (map page, valuation
+        # dashboard) only read price/yearly/by_type, so skipping this by
+        # default halves the aggregation work on every request — this VM
+        # runs with ~2GB RAM alongside the loaded ML models.
+        if full_stats:
+            price_arr = prices.to_numpy()  # single array, reused below — no extra copies
+
+            # Price histogram (10 bins on log scale → readable buckets)
+            log_prices = np.log10(np.clip(price_arr, 1, None))
+            counts, edges = np.histogram(log_prices, bins=10)
+            stats["histogram"] = [
+                {
+                    "range": [round(10 ** edges[i]), round(10 ** edges[i + 1])],
+                    "count": int(counts[i]),
+                }
+                for i in range(len(counts))
+            ]
+
+            # Fixed RM-band price distribution (matches the dashboard's default
+            # bands). np.digitize + bincount is a single vectorized pass with no
+            # intermediate Categorical/groupby allocation, unlike pd.cut(...).value_counts().
+            band_labels = ["<200k", "200-300k", "300-400k", "400-500k", "500-700k", "700k-1m", "1-1.5m", ">1.5m"]
+            band_upper = np.array([200_000, 300_000, 400_000, 500_000, 700_000, 1_000_000, 1_500_000], dtype=np.float64)
+            band_idx = np.digitize(price_arr, band_upper)  # 0..7
+            band_counts = np.bincount(band_idx, minlength=len(band_labels))
+            stats["price_bands"] = [
+                {"band": label, "count": int(band_counts[i])} for i, label in enumerate(band_labels)
+            ]
+
+            # Tenure split (freehold / leasehold / other) — tiny, low-cardinality column
+            tenure_counts = out["Tenure"].value_counts()
+            stats["tenure"] = [
+                {"tenure": str(name), "count": int(count)} for name, count in tenure_counts.items()
+            ]
 
     out = out.sort_values(sort_by, ascending=(order == "asc"), na_position="last")
     page = out.iloc[offset : offset + limit]

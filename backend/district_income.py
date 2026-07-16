@@ -57,6 +57,43 @@ def normalise_district(district: str) -> str:
     return _NORMALISE.get(district, district)
 
 
+# Income dataset spells some states differently than the rest of the app.
+_STATE_NAME_FIX: dict[str, str] = {
+    "Pulau Pinang": "Penang",
+    "W.P. Kuala Lumpur": "Kuala Lumpur",
+    "W.P. Labuan": "Labuan",
+    "W.P. Putrajaya": "Putrajaya",
+}
+
+# Two transactions.parquet districts too small to appear in the income dataset
+# (7 and 18 rows respectively) — mapped to their state by hand.
+_STATE_OVERRIDES: dict[str, str] = {
+    "DAERAH KECIL MUADZAM SHAH": "Pahang",
+    "Labuk Sugut": "Sabah",
+}
+
+
+@lru_cache(maxsize=1)
+def district_state_map() -> dict[str, str]:
+    """Map every transactions.parquet District value to its state name.
+
+    Built from the income dataset's district->state columns (via the same
+    normalisation used by get_income), plus manual overrides for the couple
+    of districts too small to appear there.
+    """
+    income = _load()[["district", "state"]].drop_duplicates()
+    by_income_name = {
+        row["district"]: _STATE_NAME_FIX.get(row["state"], row["state"])
+        for _, row in income.iterrows()
+    }
+    mapping = dict(by_income_name)
+    for txn_name, income_name in _NORMALISE.items():
+        if income_name in by_income_name:
+            mapping[txn_name] = by_income_name[income_name]
+    mapping.update(_STATE_OVERRIDES)
+    return mapping
+
+
 def get_income(district: str, year: int = 2022) -> dict | None:
     """Return income stats for a district, or None if not found.
 
