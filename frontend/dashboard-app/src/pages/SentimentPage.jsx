@@ -195,7 +195,6 @@ const HCR_PERIODS = [
 ]
 
 // ---- Helper functions -------------------------------------------------------
-const hcrPct = (v) => (v * 100).toFixed(1) + '%'
 const hcrNum = (v, unit = '') => {
   if (Math.abs(v) >= 1000) return Math.round(v).toLocaleString('en-MY') + unit
   return v.toFixed(Math.abs(v) < 10 ? 2 : 1) + unit
@@ -211,7 +210,7 @@ const hcrEventForYear = (year) => {
   return found.join(', ')
 }
 
-// ---- RegimePanel — the sentiment gauge -------------------------------------
+// ---- RegimePanel — the housing cycle gauge ---------------------------------
 const RegimePanel = ({ latest }) => {
   const p = Math.max(0, Math.min(1, latest.probability ?? HCR_LATEST.probability))
   const high = p > 0.5
@@ -219,7 +218,7 @@ const RegimePanel = ({ latest }) => {
     <Card className="p-6">
       <div className="flex justify-between gap-4 items-start flex-wrap">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#A27B5C]">Housing cycle sentiment signal</p>
+          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#A27B5C]">Housing cycle signal</p>
           <span className="font-display text-[34px] font-medium text-[#2C3930] block mt-2">
             House prices are currently{' '}
             <span className={`font-bold ${high ? 'text-[#A63228]' : 'text-[#2D7A4F]'}`}>{high ? 'HIGH' : 'LOW'}</span>
@@ -229,8 +228,8 @@ const RegimePanel = ({ latest }) => {
           </p>
         </div>
         <div className="text-right">
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#A27B5C]">Prediction</p>
-          <span className={`font-mono text-[34px] font-medium ${high ? 'text-[#A63228]' : 'text-[#2D7A4F]'}`}>{hcrPct(p)}</span>
+          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#A27B5C]">Housing cycle index score</p>
+          <span className={`font-mono text-[34px] font-medium ${high ? 'text-[#A63228]' : 'text-[#2D7A4F]'}`}>{p.toFixed(3)}</span>
         </div>
       </div>
 
