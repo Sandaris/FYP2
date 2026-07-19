@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card'
 import { ScrollReveal } from '@/components/shared'
 import { C } from '@/lib/colors'
 import { API } from '@/lib/api'
+import { MKT_YOY } from '@/lib/napicPrices'
 import {
   chartAreaGrad,
   chartAxisLine,
@@ -184,14 +185,24 @@ const HCR_CYCLE = [
   { period: '2025 Q3', year: 2025.50, cyc: -9.14, pos: 0 },
 ]
 
+// Each phase gets a `short` tag drawn on top of its band, the full `label`
+// (tooltip title), a `desc` helper shown on hover, and a `row` (0 = top line,
+// 1 = dropped one line) so tightly-spaced tags don't collide.
 const HCR_PERIODS = [
-  { from: 1997.5, to: 1999.0, label: 'AFC' },
-  { from: 2008.5, to: 2009.5, label: 'GFC' },
-  { from: 2010.75, to: 2011.75, label: 'LTV restriction for third and subsequent housing loans' },
-  { from: 2011.0, to: 2013.75, label: 'Housing boom' },
-  { from: 2014.0, to: 2016.75, label: 'Cooling measures / RPGT tightening' },
-  { from: 2020.0, to: 2021.75, label: 'COVID-19 disruption' },
-  { from: 2022.25, to: 2024.75, label: 'Post-pandemic housing recovery' },
+  { from: 1997.5, to: 1999.0, row: 0, short: 'AFC', label: 'Asian Financial Crisis',
+    desc: 'Regional currency and asset collapse pulled prices sharply below their long-run trend.' },
+  { from: 2008.5, to: 2009.5, row: 0, short: 'GFC', label: 'Global Financial Crisis',
+    desc: 'The global credit crunch briefly dented demand and prices dipped under trend.' },
+  { from: 2010.75, to: 2011.75, row: 0, short: 'LTV cap', label: 'LTV restriction on 3rd+ housing loans',
+    desc: 'Bank Negara capped the loan-to-value ratio at 70% on third and subsequent housing loans to rein in speculative buying.' },
+  { from: 2011.0, to: 2013.75, row: 1, short: 'Housing boom', label: 'Housing boom',
+    desc: 'A stretch of rapid price appreciation that pushed the cycle well above its trend line.' },
+  { from: 2014.0, to: 2016.75, row: 0, short: 'Cooling', label: 'Cooling measures / RPGT tightening',
+    desc: 'Higher Real Property Gains Tax and tighter lending brought prices back down toward trend.' },
+  { from: 2020.0, to: 2021.75, row: 0, short: 'COVID-19', label: 'COVID-19 disruption',
+    desc: 'Pandemic lockdowns froze transaction activity and briefly pushed prices below trend.' },
+  { from: 2022.25, to: 2024.75, row: 1, short: 'Recovery', label: 'Post-pandemic housing recovery',
+    desc: 'Reopening and low interest rates drove a rebound back toward and above trend.' },
 ]
 
 // ---- Helper functions -------------------------------------------------------
@@ -205,9 +216,14 @@ const hcrQuarter = (p) => {
   const q = Math.max(1, Math.min(4, Math.floor((p.year - year) * 4 + 1.05)))
   return `${year} Q${q}`
 }
-const hcrEventForYear = (year) => {
-  const found = HCR_PERIODS.filter(e => year >= e.from && year <= e.to).map(e => e.label)
-  return found.join(', ')
+const hcrPhasesForYear = (year) => HCR_PERIODS.filter(e => year >= e.from && year <= e.to)
+// nearest HCR_CYCLE quarter label to a fractional year. Both cycle-page charts
+// pin their crisis-event bands through this + the shared HCR_CYCLE period axis,
+// so a given event sits at the same x on both — they line up vertically.
+const hcrPeriodAtYear = (yr) => {
+  let best = HCR_CYCLE[0]
+  for (const p of HCR_CYCLE) if (Math.abs(p.year - yr) < Math.abs(best.year - yr)) best = p
+  return best.period
 }
 
 // ---- RegimePanel — the housing cycle gauge ---------------------------------
@@ -256,11 +272,6 @@ const RegimePanel = ({ latest }) => {
 
 // ---- CycleComponentChart ---------------------------------------------------
 const CycleComponentChart = () => {
-  const periodAtYear = (yr) => {
-    let best = HCR_CYCLE[0]
-    for (const p of HCR_CYCLE) if (Math.abs(p.year - yr) < Math.abs(best.year - yr)) best = p
-    return best.period
-  }
   const option = useMemo(() => withChartBase({
     grid: { left: 52, right: 22, top: 22, bottom: 78 },
     tooltip: {
@@ -273,13 +284,16 @@ const CycleComponentChart = () => {
         const period = p.axisValue
         const yy = parseInt(period, 10)
         const q = parseInt(period.split('Q')[1], 10) || 1
-        const ev = hcrEventForYear(yy + (q - 1) * 0.25)
+        const phases = hcrPhasesForYear(yy + (q - 1) * 0.25)
         const above = v >= 0
         return (
           `<div style="font-family:'JetBrains Mono',monospace;font-size:12px">${period}</div>` +
           `<div style="margin-top:4px">Cycle: <b>${above ? '+' : ''}${v.toFixed(2)}k</b></div>` +
           `<div>${above ? 'Above trend / upward pressure' : 'Below trend / low-price pressure'}</div>` +
-          (ev ? `<div style="margin-top:5px;color:${C.earthLight}">${ev}</div>` : '')
+          phases.map(e => (
+            `<div style="margin-top:6px;color:${C.earthLight};font-weight:600">${e.label}</div>` +
+            `<div style="max-width:230px;white-space:normal;font-size:11px;line-height:1.45;opacity:0.85">${e.desc}</div>`
+          )).join('')
         )
       },
     },
@@ -325,7 +339,20 @@ const CycleComponentChart = () => {
         },
         markArea: {
           silent: true, itemStyle: { color: C.earth, opacity: 0.07 },
-          data: HCR_PERIODS.map(e => [{ xAxis: periodAtYear(e.from) }, { xAxis: periodAtYear(e.to) }]),
+          // short phase tag pinned to the top of each band — the same deep-green
+          // pill / cream text as the toggles elsewhere in the app (crisp ~9:1).
+          // Row-1 tags drop via a label offset so tight neighbours don't collide.
+          label: {
+            show: true, position: 'insideTop', distance: 6,
+            color: C.cream, backgroundColor: C.deep,
+            padding: [3, 8], borderRadius: 6,
+            fontSize: 11, fontWeight: 600, fontFamily: "'DM Sans',sans-serif",
+            shadowBlur: 5, shadowColor: 'rgba(44,57,48,0.30)', shadowOffsetY: 1,
+          },
+          data: HCR_PERIODS.map(e => [
+            { xAxis: hcrPeriodAtYear(e.from), name: e.short, label: e.row ? { offset: [0, 24] } : undefined },
+            { xAxis: hcrPeriodAtYear(e.to) },
+          ]),
         },
       },
     ],
@@ -336,6 +363,107 @@ const CycleComponentChart = () => {
       <div className="flex justify-between items-baseline gap-3 mb-1">
         <span className="font-display text-[22px] font-medium text-[#2C3930]">HP-filter cyclical component</span>
         <span className="text-xs text-[#3F4F44]">Mean price minus HP trend, RM '000 · drag the slider to zoom</span>
+      </div>
+      <ReactECharts option={option} style={{ height: 360 }} opts={chartOpts} />
+    </Card>
+  )
+}
+
+// ---- PriceGrowthChart — NAPIC mean-price YoY growth, annotated with the same
+// crisis-event bands as the cyclical component above -------------------------
+const PriceGrowthChart = () => {
+  // Share the cyclical chart's exact 1989–2025 quarter axis so the crisis-event
+  // bands line up vertically between the two charts. The NAPIC price series only
+  // starts in 2000, so YoY is null before 2001 Q1 (blank on the left).
+  const periods = HCR_CYCLE.map(p => p.period)
+  const yoyByPeriod = Object.fromEntries(MKT_YOY.map(d => [d[0], d[1]]))
+  const data = periods.map(p => {
+    const v = yoyByPeriod[p]
+    return v == null ? null : +v.toFixed(2)
+  })
+
+  const option = useMemo(() => withChartBase({
+    grid: { left: 52, right: 22, top: 22, bottom: 78 },
+    tooltip: {
+      trigger: 'axis',
+      ...chartTooltip(),
+      axisPointer: chartAxisPointerLine,
+      formatter: (ps) => {
+        const p = ps.find(x => x.seriesName === 'yoy') || ps[0]
+        const period = p.axisValue
+        const v = p.data
+        if (v == null) {
+          return `<div style="font-family:'JetBrains Mono',monospace;font-size:12px">${period}</div>` +
+            `<div style="margin-top:4px;opacity:0.8">Price series starts 2000</div>`
+        }
+        const yy = parseInt(period, 10)
+        const q = parseInt(period.split('Q')[1], 10) || 1
+        const active = hcrPhasesForYear(yy + (q - 1) * 0.25)
+        return (
+          `<div style="font-family:'JetBrains Mono',monospace;font-size:12px">${period}</div>` +
+          `<div style="margin-top:4px">YoY growth: <b>${v >= 0 ? '+' : ''}${v.toFixed(1)}%</b></div>` +
+          active.map(e => (
+            `<div style="margin-top:6px;color:${C.earthLight};font-weight:600">${e.label}</div>` +
+            `<div style="max-width:230px;white-space:normal;font-size:11px;line-height:1.45;opacity:0.85">${e.desc}</div>`
+          )).join('')
+        )
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: periods,
+      boundaryGap: false,
+      axisLine: chartAxisLine,
+      axisTick: { show: false },
+      axisLabel: {
+        ...chartValueAxisLabel(),
+        interval: (i, v) => v.endsWith('Q1') && parseInt(v, 10) % 5 === 0,
+        formatter: (v) => v.split(' ')[0],
+      },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { ...chartValueAxisLabel(), formatter: (v) => (v > 0 ? '+' : '') + v + '%' },
+      splitLine: chartSplitLine,
+    },
+    dataZoom: [chartDataZoomSlider()],
+    series: [{
+      // NAPIC YoY growth stays positive across the whole 2001–2025 span, so a
+      // single green line reads cleanly; the dashed zero line marks the floor.
+      name: 'yoy', type: 'line', smooth: true, showSymbol: false, symbol: 'circle', symbolSize: 7, z: 3,
+      connectNulls: false,
+      data,
+      lineStyle: { color: C.up, width: 1.8 },
+      areaStyle: { color: chartAreaGrad(C.up, 0.26, 0.02) },
+      emphasis: { focus: 'series', scale: 1.4 },
+      markLine: {
+        silent: true, symbol: 'none', label: { show: false },
+        lineStyle: { color: C.deep, width: 1.2 }, data: [{ yAxis: 0 }],
+      },
+      markArea: {
+        silent: true, itemStyle: { color: C.earth, opacity: 0.07 },
+        // same deep-green pill / cream text as the cyclical-component bands;
+        // row-1 tags drop via a label offset so tight neighbours don't collide.
+        label: {
+          show: true, position: 'insideTop', distance: 6,
+          color: C.cream, backgroundColor: C.deep,
+          padding: [3, 8], borderRadius: 6,
+          fontSize: 11, fontWeight: 600, fontFamily: "'DM Sans',sans-serif",
+          shadowBlur: 5, shadowColor: 'rgba(44,57,48,0.30)', shadowOffsetY: 1,
+        },
+        data: HCR_PERIODS.map(e => [
+          { xAxis: hcrPeriodAtYear(e.from), name: e.short, label: e.row ? { offset: [0, 24] } : undefined },
+          { xAxis: hcrPeriodAtYear(e.to) },
+        ]),
+      },
+    }],
+  }), [])
+
+  return (
+    <Card className="p-6">
+      <div className="flex justify-between items-baseline gap-3 mb-1">
+        <span className="font-display text-[22px] font-medium text-[#2C3930]">House price growth (YoY)</span>
+        <span className="text-xs text-[#3F4F44]">Mean price, % change vs a year earlier · NAPIC · drag the slider to zoom</span>
       </div>
       <ReactECharts option={option} style={{ height: 360 }} opts={chartOpts} />
     </Card>
@@ -454,6 +582,9 @@ export default function SentimentPage() {
       </ScrollReveal>
       <ScrollReveal delay={80}>
         <CycleComponentChart />
+      </ScrollReveal>
+      <ScrollReveal delay={100}>
+        <PriceGrowthChart />
       </ScrollReveal>
       <ScrollReveal delay={120}>
         <Card className="p-6">

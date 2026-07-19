@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatCard, ScrollReveal } from '@/components/shared'
 import { Eyebrow } from '@/components/shared/primitives'
 import { C } from '@/lib/colors'
+import { MKT_PRICE } from '@/lib/napicPrices'
 import {
   CHART_THEME,
   chartAreaGrad,
@@ -387,6 +388,29 @@ export default function MarketOverviewPage() {
     }],
   }), [])
 
+  const priceOption = useMemo(() => withChartBase({
+    grid: chartGrid(),
+    tooltip: {
+      trigger: 'axis', ...chartTooltip(),
+      axisPointer: chartAxisPointerLine,
+      valueFormatter: (v) => mRM(v),
+    },
+    xAxis: {
+      type: 'category', data: MKT_PRICE.map(d => d[0]), boundaryGap: false,
+      axisLine: chartAxisLine, axisTick: { show: false },
+      axisLabel: { ...chartValueAxisLabel(), interval: (i, v) => v.endsWith('Q1') && Number(v.slice(0, 4)) % 5 === 0, formatter: (v) => v.split(' ')[0] },
+    },
+    yAxis: {
+      type: 'value', scale: true, splitLine: chartSplitLine,
+      axisLabel: { ...chartValueAxisLabel(), formatter: (v) => 'RM' + Math.round(v / 1000) + 'k' },
+    },
+    series: [{
+      type: 'line', smooth: true, showSymbol: false, data: MKT_PRICE.map(d => d[1]),
+      lineStyle: { color: C.mid, width: 2.4 },
+      areaStyle: { color: chartAreaGrad(C.mid, 0.34, 0.02) },
+    }],
+  }), [])
+
   // ---- state filter: every chart below the tab bar reads from the
   // precomputed STATE_STATS table, except "Top districts" which stays a
   // fixed, whole-country ranking.
@@ -516,13 +540,22 @@ export default function MarketOverviewPage() {
       </ScrollReveal>
 
       <ScrollReveal>
-        <ChartCard title="Transaction volume" note="quarterly · 2024 Q4 onward still being reported">
-          <ReactECharts option={volOption} style={{ height: 300 }} opts={chartOpts} />
-          <p className="mt-2 font-sans text-[11.5px] text-[#3F4F44] leading-relaxed">
-            The market ran at ~30,000 sales a quarter through 2022–2024. The shaded tail is provisional —
-            NAPIC registers transactions with a lag, so recent quarters understate true activity.
-          </p>
-        </ChartCard>
+        <div className="grid grid-cols-2 gap-[18px] max-[980px]:grid-cols-1">
+          <ChartCard title="Transaction volume" note="quarterly · 2024 Q4 onward still being reported">
+            <ReactECharts option={volOption} style={{ height: 300 }} opts={chartOpts} />
+            <p className="mt-2 font-sans text-[11.5px] text-[#3F4F44] leading-relaxed">
+              The market ran at ~30,000 sales a quarter through 2022–2024. The shaded tail is provisional —
+              NAPIC registers transactions with a lag, so recent quarters understate true activity.
+            </p>
+          </ChartCard>
+          <ChartCard title="Average house price" note="Malaysia · quarterly · 2000–2025 · NAPIC">
+            <ReactECharts option={priceOption} style={{ height: 300 }} opts={chartOpts} />
+            <p className="mt-2 font-sans text-[11.5px] text-[#3F4F44] leading-relaxed">
+              The mean residential price climbed from ~RM135k in 2000 to ~RM511k by 2025 — a 3.8× rise, with
+              the steepest run-up over 2010–2015 and a gentler, steady grind since.
+            </p>
+          </ChartCard>
+        </div>
       </ScrollReveal>
 
       <ScrollReveal>
