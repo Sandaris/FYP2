@@ -660,6 +660,13 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
   const boxplotMarkers = useMemo(() => Object.values(modelMarkers).map((mk) => ({
     ...mk, color: MODEL_MARKER_COLOR[mk.key] || C.deep, active: mk.key === m.key,
   })), [modelMarkers, m.key]);
+  // Blended estimate across every model explored for this scope. Stays hidden
+  // until a second model has been run — one model is not an average.
+  const exploredAvg = useMemo(() => {
+    const pts = Object.values(modelMarkers).map((mk) => mk.point).filter((p) => p > 0);
+    if (pts.length < 2) return null;
+    return { n: pts.length, value: pts.reduce((a, b) => a + b, 0) / pts.length };
+  }, [modelMarkers]);
   const unavailableMessage = avgGuardBlocked
     ? (avgGuard.avg
         ? `Data is not available: model estimate differs by ${(avgGuard.delta * 100).toFixed(0)}% from the recent ${avgGuard.scope === 'type' ? shortType(sel.propertyType) : 'similar-property'} average (${rmCompact(avgGuard.avg)}, ${avgGuard.n} transactions).`
@@ -832,6 +839,13 @@ const ValuationDashboard = ({ sel, loading, fullpage, onExportRoi }) => {
               </span>
               {valPerSqm && <Mono size={12} color={C.earthText}>≈ RM {valPerSqm.toLocaleString()}/m²</Mono>}
             </div>
+            {hasDisplayableEstimate && exploredAvg && (
+              <div style={{ marginTop: 6, fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: C.mid }}
+                title="Mean of every model you have run for this property in this session.">
+                Avg of {exploredAvg.n} models is{' '}
+                <Mono size={12.5} color={C.deep}>{formatRM(Math.round(exploredAvg.value / 1000) * 1000)}</Mono>
+              </div>
+            )}
 
             {/* confidence band across all models */}
             <div style={{ position: 'relative', height: 46, marginTop: 18, display: hasDisplayableEstimate ? 'block' : 'none' }}>
