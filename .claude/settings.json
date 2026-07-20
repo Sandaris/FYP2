@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "PowerShell(Get-ChildItem *)",
-      "PowerShell(Get-Content *)",
-      "Bash(cd \"c:\\Users\\User\\Documents\\APU\\FYP\\Codes\" && npx tsc --noEmit*)"
-    ]
-  }
-}

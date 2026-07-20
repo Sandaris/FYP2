@@ -1,3 +1,0 @@
-
-warn - The class `ease-[cubic-bezier(.16,1,.3,1)]` is ambiguous and matches multiple utilities.
-warn - If this is content and not a class, replace it with `ease-&lsqb;cubic-bezier(.16,1,.3,1)&rsqb;` to silence this warning.

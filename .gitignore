@@ -40,3 +40,17 @@ docs/
 # Local-only operational/project notes
 .internal/
 modeldeployment.md
+
+# AI assistant context, skills, and session artifacts — local tooling only.
+# Patterns are unanchored so they match at any depth (e.g. backend/.playwright-mcp/).
+.claude/
+.codex/
+.agents/
+.impeccable/
+.superpowers/
+.playwright-mcp/
+CLAUDE.md
+AGENTS.md
+.cursor/
+.aider*
+.github/copilot-instructions.md
