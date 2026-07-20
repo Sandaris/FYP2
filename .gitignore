@@ -36,3 +36,7 @@ backend/.cache/
 
 # Local context/reference docs — not part of the shipped project
 docs/
+
+# Local-only operational/project notes
+.internal/
+modeldeployment.md
